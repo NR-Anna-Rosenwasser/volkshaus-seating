@@ -14,7 +14,8 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 #[Fillable([
     'hievents_order_id', 'hievents_public_id', 'short_id',
     'email', 'first_name', 'last_name', 'locale', 'status',
-    'token_hash', 'seats_confirmed_at', 'reminders_sent', 'last_reminder_at', 'wheelchair_notified_at', 'created_at',
+    'token_hash', 'seats_confirmed_at', 'reminders_sent', 'last_reminder_at',
+    'needs_wheelchair', 'wheelchair_notified_at', 'created_at',
 ])]
 #[Hidden(['token_hash'])]
 class Order extends Model
@@ -30,6 +31,7 @@ class Order extends Model
             'status' => OrderStatus::class,
             'seats_confirmed_at' => 'datetime',
             'last_reminder_at' => 'datetime',
+            'needs_wheelchair' => 'boolean',
             'wheelchair_notified_at' => 'datetime',
             'reminders_sent' => 'integer',
         ];

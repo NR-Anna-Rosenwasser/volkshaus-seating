@@ -62,7 +62,7 @@ class OrderSync
                 return SyncResult::Ignored;
             }
 
-            $changed = $this->applyAttendee($order, $payload, null);
+            $changed = $this->applyAttendee($order, $payload);
             $changed = $this->syncWheelchairRequest($order) || $changed;
 
             return $changed ? SyncResult::Updated : SyncResult::Unchanged;
@@ -129,13 +129,17 @@ class OrderSync
             'last_name' => $payload['last_name'] ?? null,
             'status' => $cancelled ? OrderStatus::Cancelled : OrderStatus::Active,
         ]);
+
+        // The order lists leave answers out, so absence says nothing.
+        if (is_array($payload['question_answers'] ?? null)) {
+            $order->needs_wheelchair = $this->askedForWheelchair($payload['question_answers']);
+        }
+
         $changed = $order->isDirty();
         $order->save();
 
-        $wheelchairAttendees = $this->wheelchairAttendees($payload);
-
         foreach ($payload['attendees'] ?? [] as $attendee) {
-            $changed = $this->applyAttendee($order, $attendee, $wheelchairAttendees) || $changed;
+            $changed = $this->applyAttendee($order, $attendee) || $changed;
         }
 
         if ($cancelled) {
@@ -154,13 +158,11 @@ class OrderSync
 
     /**
      * @param  array<string, mixed>  $payload
-     * @param  list<string>|null  $wheelchairAttendees  Null when the payload carries no answers.
      */
-    private function applyAttendee(Order $order, array $payload, ?array $wheelchairAttendees): bool
+    private function applyAttendee(Order $order, array $payload): bool
     {
         $attendee = Attendee::firstOrNew(['hievents_attendee_id' => (string) $payload['id']]);
         $wasActive = $attendee->exists && $attendee->status === AttendeeStatus::Active;
-        $id = (string) $payload['id'];
 
         $attendee->fill([
             'order_id' => $order->id,
@@ -170,10 +172,6 @@ class OrderSync
             'needs_seat' => in_array((string) $payload['product_id'], config('seating.seated_product_ids'), true),
             'status' => $payload['status'] === 'CANCELLED' ? AttendeeStatus::Cancelled : AttendeeStatus::Active,
         ]);
-
-        if ($wheelchairAttendees !== null) {
-            $attendee->needs_wheelchair = in_array($id, $wheelchairAttendees, true);
-        }
 
         $changed = $attendee->isDirty();
         $attendee->save();
@@ -231,10 +229,9 @@ class OrderSync
      */
     private function syncWheelchairRequest(Order $order): bool
     {
-        $wanted = $order->attendees()
-            ->where('status', AttendeeStatus::Active)
-            ->where('needs_wheelchair', true)
-            ->exists();
+        $wanted = $order->needs_wheelchair
+            && $order->status === OrderStatus::Active
+            && $order->attendees()->where('status', AttendeeStatus::Active)->exists();
 
         if ($wanted === ($order->wheelchair_notified_at !== null)) {
             return false;
@@ -267,25 +264,14 @@ class OrderSync
     }
 
     /**
-     * Hi.Events ids of the attendees who ticked the wheelchair box, or null
-     * when the payload has no answers (the order lists leave them out).
-     *
-     * @param  array<string, mixed>  $payload
-     * @return list<string>|null
+     * @param  list<array<string, mixed>>  $answers
      */
-    private function wheelchairAttendees(array $payload): ?array
+    private function askedForWheelchair(array $answers): bool
     {
-        if (! is_array($payload['question_answers'] ?? null)) {
-            return null;
-        }
-
-        return collect($payload['question_answers'])
-            ->filter(fn (array $answer): bool => in_array((string) $answer['question_id'], config('seating.wheelchair_question_ids'), true)
-                && filled($answer['answer'] ?? null)
-                && isset($answer['attendee_id']))
-            ->map(fn (array $answer): string => (string) $answer['attendee_id'])
-            ->values()
-            ->all();
+        return collect($answers)->contains(
+            fn (array $answer): bool => in_array((string) $answer['question_id'], config('seating.wheelchair_question_ids'), true)
+                && filled($answer['answer'] ?? null),
+        );
     }
 
     /**

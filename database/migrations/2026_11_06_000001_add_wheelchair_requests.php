@@ -9,11 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('attendees', function (Blueprint $table) {
-            $table->boolean('needs_wheelchair')->default(false);
-        });
-
         Schema::table('orders', function (Blueprint $table) {
+            $table->boolean('needs_wheelchair')->default(false);
             $table->timestamp('wheelchair_notified_at')->nullable();
         });
 
@@ -26,11 +23,7 @@ return new class extends Migration
         $this->setMailTypes(['link', 'confirmation', 'reminder', 'auto_assigned', 'final']);
 
         Schema::table('orders', function (Blueprint $table) {
-            $table->dropColumn('wheelchair_notified_at');
-        });
-
-        Schema::table('attendees', function (Blueprint $table) {
-            $table->dropColumn('needs_wheelchair');
+            $table->dropColumn(['needs_wheelchair', 'wheelchair_notified_at']);
         });
     }
 

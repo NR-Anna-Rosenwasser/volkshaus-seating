@@ -58,9 +58,9 @@ function orderPayload(array $overrides = []): array
     ];
 }
 
-function wheelchairAnswer(int $attendeeId): array
+function wheelchairAnswer(): array
 {
-    return ['question_id' => 7, 'answer' => ['Ja'], 'text_answer' => 'Ja', 'attendee_id' => $attendeeId, 'order_id' => 100];
+    return ['question_id' => 7, 'belongs_to' => 'ORDER', 'answer' => ['Ja'], 'text_answer' => 'Ja', 'order_id' => 100];
 }
 
 function sendWebhook(string $type, array $payload, ?string $secret = WEBHOOK_SECRET)
@@ -119,8 +119,8 @@ it('rejects everything when no secret is configured', function () {
 it('handles a duplicate delivery only once', function () {
     $this->travelTo(now()->startOfSecond());
 
-    sendWebhook('order.created', orderPayload(['attendees' => [attendeePayload(1)], 'question_answers' => [wheelchairAnswer(1)]]))->assertOk();
-    sendWebhook('order.created', orderPayload(['attendees' => [attendeePayload(1)], 'question_answers' => [wheelchairAnswer(1)]]))->assertOk();
+    sendWebhook('order.created', orderPayload(['attendees' => [attendeePayload(1)], 'question_answers' => [wheelchairAnswer()]]))->assertOk();
+    sendWebhook('order.created', orderPayload(['attendees' => [attendeePayload(1)], 'question_answers' => [wheelchairAnswer()]]))->assertOk();
 
     expect(WebhookEvent::count())->toBe(1)
         ->and(Order::count())->toBe(1);
@@ -188,7 +188,7 @@ it('frees one seat when one attendee is cancelled', function () {
 });
 
 it('tells every configured address about a wheelchair request, once', function () {
-    $payload = orderPayload(['question_answers' => [wheelchairAnswer(1)]]);
+    $payload = orderPayload(['question_answers' => [wheelchairAnswer()]]);
 
     sendWebhook('order.created', $payload);
     sendWebhook('order.updated', $payload);
@@ -198,19 +198,24 @@ it('tells every configured address about a wheelchair request, once', function (
         && $mail->hasTo('team@example.ch')
         && $mail->type === MailType::WheelchairRequested);
 
-    expect(Attendee::where('hievents_attendee_id', '1')->value('needs_wheelchair'))->toBeTrue()
-        ->and(Attendee::where('hievents_attendee_id', '2')->value('needs_wheelchair'))->toBeFalse()
+    expect(Order::sole()->needs_wheelchair)->toBeTrue()
         ->and(MailLog::sole()->type)->toBe(MailType::WheelchairRequested);
 });
 
+it('registers every ticket of a wheelchair order as needing a seat', function () {
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
+
+    expect(Attendee::where('needs_seat', true)->where('status', AttendeeStatus::Active)->count())->toBe(2);
+});
+
 it('never mails the buyer about a wheelchair request', function () {
-    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer(1)]]));
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
 
     Mail::assertNotQueued(WheelchairNotice::class, fn (WheelchairNotice $mail) => $mail->hasTo('rita@example.ch'));
 });
 
 it('renders the wheelchair notice', function () {
-    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer(1)]]));
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
 
     $mail = new WheelchairNotice(Order::sole(), MailType::WheelchairRequested);
 
@@ -220,18 +225,18 @@ it('renders the wheelchair notice', function () {
 
 it('ignores other questions and unanswered boxes', function () {
     sendWebhook('order.created', orderPayload(['question_answers' => [
-        [...wheelchairAnswer(1), 'question_id' => 8],
-        [...wheelchairAnswer(2), 'answer' => []],
+        [...wheelchairAnswer(), 'question_id' => 8],
+        [...wheelchairAnswer(), 'answer' => []],
     ]]));
 
     Mail::assertNothingQueued();
 });
 
-it('reports a cancelled wheelchair ticket and blocks its seat again', function () {
-    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer(1)]]));
+it('reports a cancelled wheelchair order and blocks its seats again', function () {
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
     seatAttendee('1', 'P-4-26');
 
-    sendWebhook('attendee.cancelled', attendeePayload(1, ['status' => 'CANCELLED']));
+    sendWebhook('order.cancelled', orderPayload(['status' => 'CANCELLED', 'question_answers' => [wheelchairAnswer()]]));
 
     Mail::assertQueued(WheelchairNotice::class, fn (WheelchairNotice $mail) => $mail->type === MailType::WheelchairCancelled);
 
@@ -240,10 +245,20 @@ it('reports a cancelled wheelchair ticket and blocks its seat again', function (
         ->block_reason->toBe(BlockReason::Wheelchair);
 });
 
+it('only reports a wheelchair cancellation once no ticket is left', function () {
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
+
+    sendWebhook('attendee.cancelled', attendeePayload(1, ['status' => 'CANCELLED']));
+    Mail::assertQueuedCount(1);
+
+    sendWebhook('attendee.cancelled', attendeePayload(2, ['status' => 'CANCELLED']));
+    Mail::assertQueued(WheelchairNotice::class, fn (WheelchairNotice $mail) => $mail->type === MailType::WheelchairCancelled);
+});
+
 it('warns instead of losing a request when no recipient is configured', function () {
     config(['seating.wheelchair_notify_emails' => []]);
 
-    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer(1)]]));
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
 
     Mail::assertNothingQueued();
     Http::assertSent(fn (Request $request) => str_contains($request->url(), 'ntfy.test/seats'));
@@ -274,14 +289,14 @@ it('imports missed orders with their wheelchair answers', function () {
     unset($list['question_answers']);
 
     Http::fake([
-        'hi.test/api/events/1/orders/100' => Http::response(['data' => orderPayload(['question_answers' => [wheelchairAnswer(2)]])]),
+        'hi.test/api/events/1/orders/100' => Http::response(['data' => orderPayload(['question_answers' => [wheelchairAnswer()]])]),
         'hi.test/api/events/1/orders*' => Http::response(['data' => [$list], 'meta' => ['last_page' => 1]]),
         'ntfy.test/*' => Http::response(),
     ]);
 
     $this->artisan('seating:reconcile')->expectsOutputToContain('created 1')->assertSuccessful();
 
-    expect(Attendee::where('hievents_attendee_id', '2')->value('needs_wheelchair'))->toBeTrue();
+    expect(Order::sole()->needs_wheelchair)->toBeTrue();
     Mail::assertQueuedCount(1);
     Http::assertSent(fn (Request $request) => str_contains($request->url(), 'ntfy.test/seats'));
 });
@@ -303,7 +318,7 @@ it('fixes attendees whose changes sent no webhook', function () {
 });
 
 it('keeps wheelchair flags when reconciling a list without answers', function () {
-    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer(1)]]));
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
 
     $list = orderPayload();
     unset($list['question_answers']);
@@ -312,7 +327,7 @@ it('keeps wheelchair flags when reconciling a list without answers', function ()
 
     $this->artisan('seating:reconcile')->expectsOutputToContain('unchanged 1')->assertSuccessful();
 
-    expect(Attendee::where('hievents_attendee_id', '1')->value('needs_wheelchair'))->toBeTrue();
+    expect(Order::sole()->needs_wheelchair)->toBeTrue();
     Mail::assertQueuedCount(1);
 });
 

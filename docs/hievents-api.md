@@ -3883,25 +3883,23 @@ An order counts as paid when `status` is `COMPLETED`.
 
 ## Checkout questions
 
-A ticket-level answer (`belongs_to: PRODUCT`) in `question_answers`:
+An order-level answer in `question_answers`:
 
 ```json
 {
-  "question_id": 4,
-  "title": "Ich benötige einen Rollstuhlplatz",
-  "belongs_to": "PRODUCT",
+  "question_id": 1,
+  "title": "Rollstuhlplatz",
+  "belongs_to": "ORDER",
   "question_type": "CHECKBOX",
   "answer": ["Ja"],
   "text_answer": "Ja",
-  "order_id": 15,
-  "attendee_id": 24,
-  "product_id": 2,
+  "order_id": 4,
   "event_id": 1
 }
 ```
 
-Order-level answers have the same shape with `belongs_to: ORDER` and no attendee. Unticked boxes send
-no answer.
+Ticket-level answers have `belongs_to: PRODUCT` and also carry `attendee_id` and `product_id`. Unticked
+boxes send no answer.
 
 Where answers appear:
 
