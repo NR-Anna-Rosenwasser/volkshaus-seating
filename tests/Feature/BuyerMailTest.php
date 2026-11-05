@@ -179,6 +179,43 @@ it('points to the organisers once changes are closed', function () {
         ->not->toContain('Plätze ändern');
 });
 
+it('addresses a single ticket as du in every mail', function (MailType $type, string $subject, string $body) {
+    $order = buyer(tickets: 1);
+    seated($order, 'P-12-7');
+
+    $mail = new SeatMail($order, $type);
+    $mail->assertHasSubject("{$subject}: Hässig am Mittwoch");
+
+    expect($mail->render())
+        ->toContain($body)
+        ->toContain('Bitte leite ihn nicht weiter')
+        ->not->toMatch('/\b(ihr|euch|euer|eure[nrs]?)\b/iu')
+        ->not->toContain('Plätze');
+})->with([
+    [MailType::Link, 'Wähle deinen Platz', 'Du kannst jetzt deinen Platz wählen.'],
+    [MailType::Confirmation, 'Dein Platz', 'Das ist dein aktueller Platz:'],
+    [MailType::Reminder, 'Erinnerung: Wähle deinen Platz', 'Sonst teilen wir dir automatisch einen Platz zu.'],
+    [MailType::AutoAssigned, 'Wir haben dir einen Platz zugeteilt', 'Wir haben dir diesen Platz zugeteilt:'],
+    [MailType::Final, 'Bis bald: dein Platz', 'Wir freuen uns auf dich am'],
+]);
+
+it('stays plural when one seat of a group is still missing', function () {
+    $order = buyer(tickets: 3);
+    seated($order, 'P-12-7', 'P-12-8');
+
+    $mail = new SeatMail($order, MailType::Reminder);
+    $mail->assertHasSubject('Erinnerung: Wählt eure Plätze: Hässig am Mittwoch');
+
+    expect($mail->render())->toContain('Ihr braucht 3 Plätze')->toContain('Bitte leitet ihn nicht weiter');
+});
+
+it('switches to du when a cancellation leaves one ticket', function () {
+    $order = buyer(tickets: 2);
+    $order->attendees()->first()->update(['status' => AttendeeStatus::Cancelled]);
+
+    expect((new SeatMail($order, MailType::Link))->render())->toContain('Du kannst jetzt deinen Platz wählen.');
+});
+
 it('warns about automatic assignment in reminders', function () {
     expect((new SeatMail(buyer(), MailType::Reminder))->render())->toContain('Sonst teilen wir euch automatisch Plätze zu');
 });

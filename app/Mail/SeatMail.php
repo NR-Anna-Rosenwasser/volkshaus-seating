@@ -55,72 +55,90 @@ class SeatMail extends Mailable implements ShouldQueue
     private function subjectLine(): string
     {
         return match ($this->type) {
-            MailType::Link => 'Wählt eure Plätze',
-            MailType::Confirmation => 'Eure Plätze',
-            MailType::Reminder => 'Erinnerung: Wählt eure Plätze',
-            MailType::AutoAssigned => 'Wir haben euch Plätze zugeteilt',
-            MailType::Final => 'Bis bald: eure Plätze',
+            MailType::Link => $this->say('Wähle deinen Platz', 'Wählt eure Plätze'),
+            MailType::Confirmation => $this->say('Dein Platz', 'Eure Plätze'),
+            MailType::Reminder => $this->say('Erinnerung: Wähle deinen Platz', 'Erinnerung: Wählt eure Plätze'),
+            MailType::AutoAssigned => $this->say('Wir haben dir einen Platz zugeteilt', 'Wir haben euch Plätze zugeteilt'),
+            MailType::Final => $this->say('Bis bald: dein Platz', 'Bis bald: eure Plätze'),
             default => throw new LogicException("{$this->type->value} is not a buyer mail."),
         };
     }
 
     /**
-     * @return array{greeting: string, lines: list<string>, closing: list<string>, buttonLabel: string, buttonUrl: string}
+     * Orders with one seated ticket are one person, so they get «du».
+     */
+    private function say(string $solo, string $group): string
+    {
+        return $this->order->seatsNeeded() === 1 ? $solo : $group;
+    }
+
+    /**
+     * @return array{greeting: string, lines: list<string>, closing: list<string>, buttonLabel: string, buttonUrl: string, personalNote: string}
      */
     private function copy(): array
     {
-        $greeting = "Hallo {$this->order->first_name}";
         $window = app(SelectionWindow::class);
         $deadline = SelectionWindow::format($window->deadline());
         $selection = $this->order->selectionUrl();
         $pass = "{$selection}/ticket";
         $needed = $this->order->seatsNeeded();
-        $seats = $needed === 1 ? 'einen Platz' : "{$needed} Plätze";
-        $entry = 'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur euren Sitzplatz.';
+        $entry = $this->say(
+            'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur deinen Sitzplatz.',
+            'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur euren Sitzplatz.',
+        );
         $contact = config('seating.contact_email');
-        $changes = $contact ? "Für Änderungen schreibt uns an {$contact}." : 'Für Änderungen meldet euch bei uns.';
+        $changes = $contact
+            ? $this->say("Für Änderungen schreib uns an {$contact}.", "Für Änderungen schreibt uns an {$contact}.")
+            : $this->say('Für Änderungen melde dich bei uns.', 'Für Änderungen meldet euch bei uns.');
+        $common = [
+            'greeting' => "Hallo {$this->order->first_name}",
+            'personalNote' => $this->say(
+                'Dieser Link ist persönlich. Bitte leite ihn nicht weiter.',
+                'Dieser Link ist persönlich. Bitte leitet ihn nicht weiter.',
+            ),
+        ];
 
-        return match ($this->type) {
+        return $common + match ($this->type) {
             MailType::Link => [
-                'greeting' => $greeting,
                 'lines' => [
-                    "Ihr könnt jetzt eure Plätze wählen. Ihr braucht {$seats}.",
-                    "Ihr könnt eure Wahl bis {$deadline} ändern.",
+                    $this->say('Du kannst jetzt deinen Platz wählen.', "Ihr könnt jetzt eure Plätze wählen. Ihr braucht {$needed} Plätze."),
+                    $this->say("Du kannst deine Wahl bis {$deadline} ändern.", "Ihr könnt eure Wahl bis {$deadline} ändern."),
                 ],
-                'closing' => ['Wie voll es schon ist, seht ihr hier: '.route('plan')],
-                'buttonLabel' => 'Plätze wählen',
+                'closing' => [$this->say('Wie voll es schon ist, siehst du hier: ', 'Wie voll es schon ist, seht ihr hier: ').route('plan')],
+                'buttonLabel' => $this->say('Platz wählen', 'Plätze wählen'),
                 'buttonUrl' => $selection,
             ],
             MailType::Confirmation => [
-                'greeting' => $greeting,
-                'lines' => ['Das sind eure aktuellen Plätze:'],
-                'closing' => [$window->isOpen() ? "Ihr könnt sie bis {$deadline} ändern." : $changes, $entry],
-                'buttonLabel' => $window->isOpen() ? 'Plätze ändern' : 'Sitzplatz-Pass ansehen',
+                'lines' => [$this->say('Das ist dein aktueller Platz:', 'Das sind eure aktuellen Plätze:')],
+                'closing' => [
+                    $window->isOpen()
+                        ? $this->say("Du kannst ihn bis {$deadline} ändern.", "Ihr könnt sie bis {$deadline} ändern.")
+                        : $changes,
+                    $entry,
+                ],
+                'buttonLabel' => $window->isOpen() ? $this->say('Platz ändern', 'Plätze ändern') : 'Sitzplatz-Pass ansehen',
                 'buttonUrl' => $window->isOpen() ? $selection : $pass,
             ],
             MailType::Reminder => [
-                'greeting' => $greeting,
                 'lines' => [
-                    "Ihr habt noch nicht alle Plätze gewählt. Ihr braucht {$seats}.",
-                    "Wählt sie bis {$deadline}. Sonst teilen wir euch automatisch Plätze zu.",
+                    $this->say('Du hast deinen Platz noch nicht gewählt.', "Ihr habt noch nicht alle Plätze gewählt. Ihr braucht {$needed} Plätze."),
+                    $this->say("Wähle ihn bis {$deadline}. Sonst teilen wir dir automatisch einen Platz zu.", "Wählt sie bis {$deadline}. Sonst teilen wir euch automatisch Plätze zu."),
                 ],
                 'closing' => [],
-                'buttonLabel' => 'Plätze wählen',
+                'buttonLabel' => $this->say('Platz wählen', 'Plätze wählen'),
                 'buttonUrl' => $selection,
             ],
             MailType::AutoAssigned => [
-                'greeting' => $greeting,
-                'lines' => ['Wir haben euch diese Plätze zugeteilt:'],
+                'lines' => [$this->say('Wir haben dir diesen Platz zugeteilt:', 'Wir haben euch diese Plätze zugeteilt:')],
                 'closing' => [$changes, $entry],
                 'buttonLabel' => 'Sitzplatz-Pass ansehen',
                 'buttonUrl' => $pass,
             ],
             MailType::Final => [
-                'greeting' => $greeting,
                 'lines' => array_values(array_filter([
-                    $this->eventLine('seating.event_date', 'Wir freuen uns auf euch am %s.'),
+                    $this->eventLine('seating.event_date', $this->say('Wir freuen uns auf dich am %s.', 'Wir freuen uns auf euch am %s.')),
                     $this->eventLine('seating.doors_at', 'Türöffnung: %s.'),
-                    'Das sind eure Plätze:',
+                    $this->say('Das ist dein Platz:', 'Das sind eure Plätze:'),
                 ])),
                 'closing' => [$entry],
                 'buttonLabel' => 'Sitzplatz-Pass ansehen',

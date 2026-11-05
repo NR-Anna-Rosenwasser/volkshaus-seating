@@ -29,7 +29,7 @@
                                     <p style="margin: 0 0 12px; font-size: 14px;">{{ $line }}</p>
                                 @endforeach
 
-                                <p style="margin: 16px 0 0; font-size: 12px; color: #6b6b6b;">Dieser Link ist persönlich. Bitte leitet ihn nicht weiter.</p>
+                                <p style="margin: 16px 0 0; font-size: 12px; color: #6b6b6b;">{{ $personalNote }}</p>
                             </td>
                         </tr>
                     </table>

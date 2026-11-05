@@ -14,4 +14,4 @@
 {{ $line }}
 
 @endforeach
-Dieser Link ist persönlich. Bitte leitet ihn nicht weiter.
+{{ $personalNote }}
