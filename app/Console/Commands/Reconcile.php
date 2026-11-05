@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Services\AdminAlert;
 use App\Services\Hievents\HieventsClient;
 use App\Services\Hievents\OrderSync;
+use App\Support\DataRetention;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -20,8 +21,15 @@ class Reconcile extends Command
 {
     public const LAST_RESULT_KEY = 'seating.last-reconciliation';
 
-    public function handle(HieventsClient $client, OrderSync $sync, AdminAlert $alert): int
+    public function handle(HieventsClient $client, OrderSync $sync, AdminAlert $alert, DataRetention $retention): int
     {
+        // It would copy every name back from Hi.Events.
+        if ($retention->isOver()) {
+            $this->info('Retention period is over, nothing to do.');
+
+            return self::SUCCESS;
+        }
+
         try {
             $counts = $this->reconcile($client, $sync);
         } catch (Throwable $exception) {

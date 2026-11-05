@@ -39,5 +39,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Generous: an open map polls every 10 seconds, and a whole group can share one IP.
         RateLimiter::for('selection', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        RateLimiter::for('public', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        // High, because a reconcile catches what is missed but a busy sale must not trip it.
+        RateLimiter::for('webhook', fn (Request $request) => Limit::perMinute(600)->by($request->ip()));
     }
 }

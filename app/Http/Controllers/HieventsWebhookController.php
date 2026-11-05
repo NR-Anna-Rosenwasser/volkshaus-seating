@@ -4,12 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessWebhookEvent;
 use App\Models\WebhookEvent;
+use App\Support\DataRetention;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 class HieventsWebhookController extends Controller
 {
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request, DataRetention $retention): Response
     {
         $body = $request->getContent();
 
@@ -18,6 +19,11 @@ class HieventsWebhookController extends Controller
         $data = json_decode($body, true);
 
         abort_unless(is_array($data), 400);
+
+        // Answered, so Hi.Events stops retrying, but nothing personal may come back in.
+        if ($retention->isOver()) {
+            return response()->noContent(200);
+        }
 
         $event = WebhookEvent::firstOrCreate(['payload_hash' => hash('sha256', $body)], [
             'event_type' => $data['event_type'] ?? null,

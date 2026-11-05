@@ -29,6 +29,10 @@ return [
     'mail_per_second' => (int) env('MAIL_PER_SECOND', 5),
     'contact_email' => env('CONTACT_EMAIL'),
 
+    'purge_after_days' => (int) env('PURGE_AFTER_DAYS', 30),
+    'backup_path' => env('BACKUP_PATH', storage_path('app/backups')),
+    'backup_keep_days' => (int) env('BACKUP_KEEP_DAYS', 14),
+
     'admin_emails' => $ids('ADMIN_EMAILS'),
     'mail_failure_threshold' => (int) env('MAIL_FAILURE_THRESHOLD', 5),
 

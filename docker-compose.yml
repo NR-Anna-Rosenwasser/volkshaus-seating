@@ -37,6 +37,11 @@ services:
   scheduler:
     <<: *app
     command: ["php", "artisan", "schedule:work"]
+    environment:
+      <<: *app-environment
+      BACKUP_PATH: /backups
+    volumes:
+      - backups:/backups
     healthcheck:
       disable: true
     depends_on:
@@ -60,3 +65,4 @@ services:
 
 volumes:
   postgres-data:
+  backups:

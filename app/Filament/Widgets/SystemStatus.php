@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Console\Commands\BackupDatabase;
 use App\Console\Commands\Reconcile;
 use App\Models\WebhookEvent;
 use App\Services\AutoAssign;
@@ -18,7 +19,7 @@ class SystemStatus extends StatsOverviewWidget
 
     protected function getColumns(): int
     {
-        return 3;
+        return 4;
     }
 
     protected function getStats(): array
@@ -32,6 +33,7 @@ class SystemStatus extends StatsOverviewWidget
                 ->description($failed ? 'Fehlgeschlagen' : ($reconcile ? 'Erfolgreich' : null))
                 ->color($failed ? 'danger' : 'gray'),
             Stat::make('Letzte Auto-Zuteilung', $this->ago(Cache::get(AutoAssign::LAST_RUN_KEY))),
+            Stat::make('Letztes Backup', $this->ago(Cache::get(BackupDatabase::LAST_BACKUP_KEY))),
         ];
     }
 

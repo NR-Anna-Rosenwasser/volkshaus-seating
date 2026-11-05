@@ -6,6 +6,13 @@ RUN npm ci && npm run build
 
 FROM dunglas/frankenphp:1-php8.4-bookworm AS app
 RUN install-php-extensions bcmath exif gd intl opcache pcntl pdo_pgsql pgsql zip
+# seating:backup needs pg_dump of the server's major version, which Debian doesn't ship.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && rm -rf /var/lib/apt/lists/* \
+    && install -d -o www-data -g www-data /backups
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY docker/php.ini "$PHP_INI_DIR/conf.d/zz-app.ini"
 ENV SERVER_NAME=:8080

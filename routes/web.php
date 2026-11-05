@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/plan');
 
-Route::get('/plan', [PlanController::class, 'show'])->name('plan');
+Route::get('/plan', [PlanController::class, 'show'])->middleware('throttle:public')->name('plan');
 
 Route::middleware('throttle:selection')->prefix('/s/{token}')->controller(SelectionController::class)->group(function () {
     Route::get('/', 'show')->name('selection.show');
