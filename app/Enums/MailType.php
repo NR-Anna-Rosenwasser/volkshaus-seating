@@ -9,4 +9,6 @@ enum MailType: string
     case Reminder = 'reminder';
     case AutoAssigned = 'auto_assigned';
     case Final = 'final';
+    case WheelchairRequested = 'wheelchair_requested';
+    case WheelchairCancelled = 'wheelchair_cancelled';
 }

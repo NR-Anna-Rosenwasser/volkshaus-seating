@@ -3883,24 +3883,36 @@ An order counts as paid when `status` is `COMPLETED`.
 
 ## Checkout questions
 
-An order-level answer in `question_answers`:
+A ticket-level answer (`belongs_to: PRODUCT`) in `question_answers`:
 
 ```json
 {
-  "question_id": 1,
-  "title": "Rollstuhlplatz",
-  "belongs_to": "ORDER",
+  "question_id": 4,
+  "title": "Ich benötige einen Rollstuhlplatz",
+  "belongs_to": "PRODUCT",
   "question_type": "CHECKBOX",
-  "answer": ["Wir brauchen einen Rollstuhlplatz"],
-  "text_answer": "Wir brauchen einen Rollstuhlplatz",
-  "order_id": 4,
+  "answer": ["Ja"],
+  "text_answer": "Ja",
+  "order_id": 15,
+  "attendee_id": 24,
+  "product_id": 2,
   "event_id": 1
 }
 ```
 
-`GET /events/{id}/orders` does not include `question_answers`, although it does include `attendees`.
-`GET /events/{id}/orders/{order_id}` includes both, and so do `order.*` webhooks. Reconciliation has to
-fetch single orders for the answer.
+Order-level answers have the same shape with `belongs_to: ORDER` and no attendee. Unticked boxes send
+no answer.
+
+Where answers appear:
+
+| Source | Top-level `question_answers` | On each attendee |
+|---|---|---|
+| `order.*` webhooks | Yes | Yes |
+| `GET /events/{id}/orders/{order_id}` | Yes | No |
+| `GET /events/{id}/orders` | No | No |
+| `GET /events/{id}/attendees` | Not applicable | No |
+
+Reconciliation has to fetch single orders to see an answer.
 
 ## API keys
 

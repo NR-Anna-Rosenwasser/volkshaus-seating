@@ -7,7 +7,8 @@ return [
 
     'event_id' => env('HIEVENTS_EVENT_ID'),
     'seated_product_ids' => $ids('SEATED_PRODUCT_IDS'),
-    'wheelchair_product_ids' => $ids('WHEELCHAIR_PRODUCT_IDS'),
+    'wheelchair_question_ids' => $ids('WHEELCHAIR_QUESTION_IDS'),
+    'wheelchair_notify_emails' => $ids('WHEELCHAIR_NOTIFY_EMAILS'),
 
     'hievents' => [
         'base_url' => env('HIEVENTS_BASE_URL'),

@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'order_id', 'hievents_attendee_id', 'hievents_product_id',
-    'first_name', 'last_name', 'status', 'needs_seat',
+    'first_name', 'last_name', 'status', 'needs_seat', 'needs_wheelchair',
 ])]
 class Attendee extends Model
 {
@@ -26,6 +26,7 @@ class Attendee extends Model
         return [
             'status' => AttendeeStatus::class,
             'needs_seat' => 'boolean',
+            'needs_wheelchair' => 'boolean',
         ];
     }
 
