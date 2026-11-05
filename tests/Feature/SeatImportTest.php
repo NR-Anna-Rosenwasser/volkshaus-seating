@@ -28,7 +28,7 @@ it('imports every seat with its geometry and flags', function () {
     $seat = Seat::findOrFail('GL-1-1');
 
     expect($seat)
-        ->section->toBe('galerie_links')
+        ->section->toBe('galerie-links')
         ->row->toBe(1)
         ->number->toBe(1)
         ->segment->toBe(2)
