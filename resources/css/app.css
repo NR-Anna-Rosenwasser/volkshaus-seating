@@ -20,7 +20,9 @@
     --color-seat-taken: #e8e5e3;
     --color-seat-taken-text: #6b6b6b;
     --color-seat-blocked: #a8a3a0;
-    --color-seat-obstructed: #f7cf3b;
+    --color-seat-selected: #2342c7;
+    --color-seat-obstructed: #e0543a;
+    --color-seat-obstructed-text: #a8321c;
     --color-pillar: #6b6b6b;
     --color-seat-active: #181818;
 }
@@ -164,13 +166,19 @@
 }
 
 .seat--obstructed[data-state='free'] circle {
-    fill: var(--color-seat-obstructed);
+    fill: #fff;
+    stroke: var(--color-seat-obstructed);
+    stroke-width: 1.5;
+}
+
+.seat--obstructed[data-state='free'] text {
+    fill: var(--color-seat-obstructed-text);
 }
 
 .seat.is-selected circle {
-    fill: var(--color-ink);
-    stroke: var(--color-seat-free);
-    stroke-width: 1.6;
+    fill: var(--color-seat-selected);
+    stroke: var(--color-seat-selected);
+    stroke-width: 1.2;
     stroke-dasharray: none;
 }
 
@@ -179,7 +187,7 @@
 }
 
 .seat.is-selected.is-active circle {
-    stroke: var(--color-seat-free);
+    stroke: var(--color-seat-selected);
 }
 
 .seat-map--pass .seat:not(.is-selected) circle {
@@ -316,12 +324,12 @@
 }
 
 .legend-dot--obstructed[data-state='free'] {
-    background: var(--color-seat-obstructed);
+    background: #fff;
+    box-shadow: inset 0 0 0 2.5px var(--color-seat-obstructed);
 }
 
 .legend-dot--selected {
-    background: var(--color-ink);
-    box-shadow: 0 0 0 2px var(--color-seat-free);
+    background: var(--color-seat-selected);
 }
 
 .legend-dot--pillar {
