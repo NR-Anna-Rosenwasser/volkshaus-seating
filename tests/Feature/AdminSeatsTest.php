@@ -193,19 +193,6 @@ it('offers no change link to wheelchair orders in a manual confirmation', functi
         ->not->toContain('Platz ändern');
 });
 
-it('offers wheelchair seats and own seats to pick from, but no other blocks', function () {
-    $this->seats->block(['P-1-1'], BlockReason::Vip, null);
-    $order = groupOf(1);
-    $this->seats->assign($order, ['P-1-2']);
-    $this->seats->assign(groupOf(1), ['P-1-3']);
-
-    $ids = $this->seats->assignableSeats($order)->pluck('id');
-
-    expect($ids)->toContain('P-1-2', 'P-1-4', wheelchairSeat()->id)
-        ->not->toContain('P-1-1')
-        ->not->toContain('P-1-3');
-});
-
 it('counts sold, assigned, free and blocked seats', function () {
     $before = app(SeatStats::class)->snapshot();
     $order = groupOf(3);

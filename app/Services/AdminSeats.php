@@ -159,23 +159,6 @@ class AdminSeats
     }
 
     /**
-     * Seats that can be given to this order, for the picker.
-     *
-     * @return Collection<int, Seat>
-     */
-    public function assignableSeats(Order $order): Collection
-    {
-        return Seat::query()
-            ->where(fn ($query) => $query
-                ->where(fn ($free) => $free
-                    ->whereNull('attendee_id')
-                    ->where(fn ($open) => $open->whereNull('block_reason')->orWhere('block_reason', BlockReason::Wheelchair)))
-                ->orWhereIn('attendee_id', $order->attendees()->select('attendees.id')))
-            ->orderBy('section')->orderBy('row')->orderBy('number')
-            ->get();
-    }
-
-    /**
      * Wheelchair orders are arranged in person, so they get no automatic mail.
      */
     private function confirm(Order $order): void

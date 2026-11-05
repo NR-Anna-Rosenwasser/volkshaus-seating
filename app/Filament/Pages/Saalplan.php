@@ -3,8 +3,10 @@
 namespace App\Filament\Pages;
 
 use App\Enums\BlockReason;
+use App\Enums\OrderStatus;
 use App\Exceptions\SeatConflict;
 use App\Filament\Resources\Orders\OrderResource;
+use App\Models\Order;
 use App\Models\Seat;
 use App\Services\AdminSeats;
 use App\Services\SeatStats;
@@ -15,6 +17,7 @@ use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Renderless;
+use Livewire\Attributes\Url;
 
 class Saalplan extends Page
 {
@@ -31,6 +34,10 @@ class Saalplan extends Page
 
     protected static ?int $navigationSort = 2;
 
+    /** Set when the page is opened to choose seats for one order. */
+    #[Url(as: 'bestellung')]
+    public ?int $orderId = null;
+
     /**
      * @return array<string, mixed>
      */
@@ -39,6 +46,7 @@ class Saalplan extends Page
         return [
             'layout' => app(VenueLayout::class),
             'plan' => $this->mapData(),
+            'assigning' => $this->assignment(),
             'reasons' => collect(BlockReason::cases())
                 ->mapWithKeys(fn (BlockReason $reason): array => [$reason->value => $reason->label()])
                 ->all(),
@@ -137,6 +145,59 @@ class Saalplan extends Page
         Notification::make()->title('Platz verschoben')->success()->send();
 
         return true;
+    }
+
+    /**
+     * @param  list<string>  $seatIds
+     */
+    public function saveOrderSeats(array $seatIds): bool
+    {
+        $order = $this->orderBeingAssigned();
+
+        if ($order === null) {
+            return false;
+        }
+
+        try {
+            app(AdminSeats::class)->assign($order, array_map('strval', $seatIds));
+        } catch (SeatConflict) {
+            Notification::make()->title('Mindestens ein Platz wurde gerade vergeben oder gesperrt')->danger()->send();
+
+            return false;
+        } catch (ValidationException $exception) {
+            Notification::make()->title($exception->getMessage())->danger()->send();
+
+            return false;
+        }
+
+        Notification::make()->title('Plätze gespeichert')->success()->send();
+        $this->redirect(OrderResource::getUrl('view', ['record' => $order]));
+
+        return true;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function assignment(): ?array
+    {
+        $order = $this->orderBeingAssigned();
+
+        return $order === null ? null : [
+            'name' => trim("{$order->first_name} {$order->last_name}"),
+            'number' => $order->short_id,
+            'needed' => $order->seatsNeeded(),
+            'seats' => $order->seats()->pluck('seats.id')->all(),
+            'wheelchair' => $order->needs_wheelchair,
+            'backUrl' => OrderResource::getUrl('view', ['record' => $order]),
+        ];
+    }
+
+    private function orderBeingAssigned(): ?Order
+    {
+        $order = $this->orderId === null ? null : Order::find($this->orderId);
+
+        return $order?->status === OrderStatus::Active && $order->seatsNeeded() > 0 ? $order : null;
     }
 
     private function capacityReminder(string $title, ?string $detail = null): void

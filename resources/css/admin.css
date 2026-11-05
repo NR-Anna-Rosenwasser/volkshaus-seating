@@ -152,11 +152,6 @@
     fill: #fff;
 }
 
-.admin-map .seat.is-selected circle {
-    fill: var(--color-seat-selected);
-    stroke: var(--color-seat-selected);
-}
-
 .admin-legend__taken {
     background: #8d8783;
 }
@@ -203,6 +198,21 @@
 .admin-legend__reason[data-reason='wheelchair'] { background: #0e7fc2; }
 .admin-legend__reason[data-reason='staff'] { background: #b0266b; }
 .admin-legend__reason[data-reason='other'] { background: #444444; }
+
+/* After the reasons: a blocked seat that is selected has to look selected. */
+.admin-map .seat.is-selected circle {
+    fill: var(--color-seat-selected);
+    stroke: var(--color-seat-selected);
+}
+
+.admin-map .seat.is-selected text {
+    fill: #fff;
+}
+
+.admin-card--focus {
+    border-color: var(--color-seat-selected);
+    box-shadow: inset 0 0 0 1px var(--color-seat-selected);
+}
 
 .admin-preview {
     display: grid;

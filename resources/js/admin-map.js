@@ -7,13 +7,14 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * The seat map for the admin: tap or drag seats to block them, tap an assigned
  * seat to see who sits there and move them.
  */
-export default ({ plan, firstReason }) => {
+export default ({ plan, firstReason, assigning }) => {
     const map = seatMap({ url: null, refreshMs: REFRESH_MS, sections: {}, total: {} });
     let drawn = null;
 
     return {
         ...map,
-        selected: [],
+        selected: assigning ? [...assigning.seats] : [],
+        full: false,
         reason: firstReason,
         note: '',
         sellable: plan.sellable,
@@ -26,6 +27,22 @@ export default ({ plan, firstReason }) => {
         init() {
             map.init.call(this);
             this.applyPlan(plan);
+
+            if (assigning) {
+                this.showOrderSeats();
+            }
+        },
+
+        /** Starts at the order's seats, or at the wheelchair seats if it needs those. */
+        showOrderSeats() {
+            const wheelchair = assigning.wheelchair
+                ? [...this.$refs.viewport.querySelectorAll('[data-reason="wheelchair"]')].map((el) => el.dataset.seat)
+                : [];
+            const seats = assigning.seats.length > 0 ? assigning.seats : wheelchair;
+
+            if (seats.length > 0) {
+                this.showBounds(seats);
+            }
         },
 
         status() {
@@ -35,6 +52,10 @@ export default ({ plan, firstReason }) => {
 
             if (this.box) {
                 return 'Ziehe ein Rechteck über die Plätze.';
+            }
+
+            if (assigning) {
+                return 'Tippe auf freie Plätze, um sie der Bestellung zuzuweisen.';
             }
 
             return this.zoomed ? 'Tippe auf Plätze, um sie auszuwählen.' : 'Tippe auf einen Bereich oder nutze «Bereich wählen».';
@@ -52,7 +73,7 @@ export default ({ plan, firstReason }) => {
 
             this.sellable = data.sellable;
             this.sold = data.sold;
-            this.selected = this.selected.filter((id) => this.seatElement(id)?.dataset.state !== 'taken');
+            this.selected = this.selected.filter((id) => (assigning ? this.canAssign(this.seatElement(id)) : this.seatElement(id)?.dataset.state !== 'taken'));
             this.paint();
         },
 
@@ -67,8 +88,54 @@ export default ({ plan, firstReason }) => {
             this.selected.forEach((id) => this.seatElement(id)?.classList.add('is-selected'));
         },
 
+        /** Free, a wheelchair seat, or already this order's own. */
+        canAssign(el) {
+            return el?.dataset.state === 'free' || el?.dataset.reason === 'wheelchair' || assigning?.seats.includes(el?.dataset.seat);
+        },
+
+        assignTapped(el) {
+            const id = el.dataset.seat;
+
+            this.full = false;
+
+            if (this.selected.includes(id)) {
+                this.selected = this.selected.filter((seat) => seat !== id);
+            } else if (!this.canAssign(el)) {
+                return;
+            } else if (assigning.needed === 1) {
+                this.selected = [id];
+            } else if (this.selected.length >= assigning.needed) {
+                this.full = true;
+
+                return;
+            } else {
+                this.selected = [...this.selected, id];
+            }
+
+            this.paint();
+        },
+
+        selectedLabels() {
+            return this.selected.map((id) => this.seatLabel(this.seatElement(id)));
+        },
+
+        async saveAssignment() {
+            this.busy = true;
+
+            if (!(await this.$wire.saveOrderSeats(this.selected))) {
+                await this.refresh();
+                this.busy = false;
+            }
+        },
+
         async seatTapped(el) {
             this.showSeat(el);
+
+            if (assigning) {
+                this.assignTapped(el);
+
+                return;
+            }
 
             const canTakePerson = el.dataset.state === 'free' || el.dataset.reason === 'wheelchair';
 

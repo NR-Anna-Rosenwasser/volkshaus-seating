@@ -2,7 +2,6 @@
 
 use App\Enums\BlockReason;
 use App\Enums\MailType;
-use App\Exceptions\SeatConflict;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\Infodesk;
 use App\Filament\Pages\Saalplan;
@@ -199,25 +198,75 @@ it('shows seats and tickets on the order page', function () {
         ->assertSee('kein Platz');
 });
 
-it('assigns seats from the order page', function () {
+it('links from the order page to the plan', function () {
     $order = adminOrder(2);
 
     Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])
-        ->callAction('assign', ['seats' => ['P-1-1', 'P-1-2']])
-        ->assertHasNoActionErrors()
-        ->assertNotified('Plätze gespeichert');
+        ->assertActionHasUrl('assign', Saalplan::getUrl(['bestellung' => $order->id]));
+});
+
+it('offers no seats for an order that needs none', function () {
+    $order = adminOrder(1, ['status' => 'cancelled']);
+
+    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])->assertActionHidden('assign');
+});
+
+it('opens the plan for one order, with its seats', function () {
+    $order = adminOrder(2, ['short_id' => 'o_rita']);
+    app(AdminSeats::class)->assign($order, ['P-1-1']);
+
+    $this->get("/admin/saalplan?bestellung={$order->id}")
+        ->assertOk()
+        ->assertSeeText('Plätze für Rita Muster')
+        ->assertSeeText('o_rita')
+        ->assertSeeText('Bestätigung per E-Mail')
+        ->assertDontSeeText('Bereich wählen');
+});
+
+it('says wheelchair orders get no automatic mail on the plan', function () {
+    $order = adminOrder(1, ['needs_wheelchair' => true]);
+
+    $this->get("/admin/saalplan?bestellung={$order->id}")->assertSeeText('keine automatische E-Mail');
+});
+
+it('shows the normal plan for an unknown or cancelled order', function () {
+    $cancelled = adminOrder(1, ['status' => 'cancelled']);
+
+    foreach ([$cancelled->id, 999999] as $id) {
+        $this->get("/admin/saalplan?bestellung={$id}")->assertOk()->assertDontSeeText('Plätze für')->assertSeeText('Bereich wählen');
+    }
+});
+
+it('saves seats from the plan and returns to the order', function () {
+    $order = adminOrder(2);
+
+    Livewire::withQueryParams(['bestellung' => $order->id])
+        ->test(Saalplan::class)
+        ->call('saveOrderSeats', ['P-1-1', 'P-1-2'])
+        ->assertReturned(true)
+        ->assertNotified('Plätze gespeichert')
+        ->assertRedirect(OrderResource::getUrl('view', ['record' => $order]));
 
     expect($order->seats()->count())->toBe(2);
 });
 
-it('explains when a seat could not be assigned', function () {
+it('explains when seats from the plan are gone', function () {
     $order = adminOrder(1);
+    app(AdminSeats::class)->assign(adminOrder(1), ['P-1-1']);
 
-    $this->partialMock(AdminSeats::class, fn ($mock) => $mock->shouldReceive('assign')->andThrow(new SeatConflict(['P-1-1'])));
+    Livewire::withQueryParams(['bestellung' => $order->id])
+        ->test(Saalplan::class)
+        ->call('saveOrderSeats', ['P-1-1'])
+        ->assertReturned(false)
+        ->assertNotified('Mindestens ein Platz wurde gerade vergeben oder gesperrt');
 
-    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])
-        ->callAction('assign', ['seats' => ['P-1-1']])
-        ->assertNotified('Nicht gespeichert');
+    expect($order->seats()->count())->toBe(0);
+});
+
+it('saves nothing without an order', function () {
+    Livewire::test(Saalplan::class)->call('saveOrderSeats', ['P-1-1'])->assertReturned(false);
+
+    expect(Seat::whereNotNull('attendee_id')->count())->toBe(0);
 });
 
 it('issues a new link and retires the old one', function () {
