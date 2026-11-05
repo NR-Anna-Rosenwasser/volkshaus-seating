@@ -7,6 +7,7 @@ Commands run on the server, in the project folder.
 
 - [ ] `.env` has the real `EVENT_DATE`, `DOORS_AT`, `SELECTION_OPENS_AT` and `SELECTION_DEADLINE`.
 - [ ] `EVENT_DATE` is right. It also decides when personal data is deleted.
+- [ ] `MAIL_FROM` is set. Without a sender, every email fails.
 - [ ] `CONTACT_EMAIL`, `ADMIN_EMAILS` and `WHEELCHAIR_NOTIFY_EMAILS` are real addresses.
 - [ ] Hi.Events has an order-level wheelchair checkbox, and its id is in `WHEELCHAIR_QUESTION_IDS`.
 - [ ] The capacity in Hi.Events equals «Verkaufbar» on the Übersicht.
