@@ -29,23 +29,7 @@
             class="-mx-4 overflow-hidden border-y border-line sm:mx-0 sm:rounded-xl sm:border"
             aria-label="Saalplan"
         >
-            {{-- Controls sit in their own strips so they never cover a seat. --}}
-            <div x-cloak class="flex items-center gap-1 border-b border-line p-2">
-                <button type="button" class="map-button px-3" x-show="zoomed" x-on:click="showOverview()">Übersicht</button>
-                <button type="button" class="map-button ml-auto w-11" aria-label="Verkleinern" x-on:click="zoomBy(1 / 1.5)">−</button>
-                <button type="button" class="map-button w-11" aria-label="Vergrössern" x-on:click="zoomBy(1.5)">+</button>
-            </div>
-
-            <div x-ref="viewport" class="seat-map-viewport">
-                <x-seat-map :layout="$layout" :states="$plan['seats']" />
-            </div>
-
-            <p
-                role="status"
-                class="flex min-h-14 items-center border-t border-line px-3 py-2 text-sm leading-snug"
-                x-bind:class="seat ? 'font-semibold text-ink' : 'text-muted'"
-                x-text="seat ?? (zoomed ? 'Tippt auf einen Platz für Details.' : 'Tippt auf einen Bereich, um ihn zu vergrössern.')"
-            >Tippt auf einen Bereich, um ihn zu vergrössern.</p>
+            <x-seat-map-frame :layout="$layout" :states="$plan['seats']" />
         </section>
 
         <nav aria-label="Bereiche">
@@ -70,13 +54,7 @@
         </nav>
 
         <aside class="space-y-4">
-            <ul class="flex flex-wrap gap-x-4 gap-y-1.5 text-sm" aria-label="Legende">
-                <li class="flex items-center gap-1.5"><span class="legend-dot" data-state="free"></span>Frei</li>
-                <li class="flex items-center gap-1.5"><span class="legend-dot" data-state="taken"></span>Belegt</li>
-                <li class="flex items-center gap-1.5"><span class="legend-dot" data-state="blocked"></span>Gesperrt</li>
-                <li class="flex items-center gap-1.5"><span class="legend-dot legend-dot--obstructed" data-state="free"></span>Sichtbehinderung</li>
-                <li class="flex items-center gap-1.5"><span class="legend-dot legend-dot--pillar"></span>Säule</li>
-            </ul>
+            <x-seat-legend />
 
             <p class="text-sm leading-relaxed text-muted">
                 Die Platzwahl erfolgt nach dem Ticketkauf. Freie Plätze werden nicht reserviert.

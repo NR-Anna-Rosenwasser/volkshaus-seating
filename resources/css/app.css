@@ -166,10 +166,79 @@
     stroke: var(--color-seat-obstructed);
 }
 
+.seat.is-selected circle {
+    fill: var(--color-accent);
+    stroke: var(--color-accent);
+    stroke-dasharray: none;
+}
+
+.seat.is-selected text {
+    fill: #fff;
+}
+
+.seat-map--pass .seat:not(.is-selected) circle {
+    fill: var(--color-seat-taken);
+    stroke: none;
+}
+
+.seat-map--pass .seat.is-selected circle {
+    stroke-width: 5;
+}
+
 .seat.is-active circle {
     stroke: var(--color-seat-active);
     stroke-width: 1.8;
     stroke-dasharray: none;
+}
+
+.primary-button {
+    display: inline-grid;
+    place-items: center;
+    min-height: 3rem;
+    padding: 0.5rem 1.25rem;
+    border-radius: 0.75rem;
+    background: var(--color-ink);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.primary-button:disabled {
+    background: var(--color-line);
+    color: var(--color-muted);
+    cursor: not-allowed;
+}
+
+.secondary-button {
+    display: inline-grid;
+    place-items: center;
+    min-height: 3rem;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-accent);
+    border-radius: 0.75rem;
+    background: #fff;
+    color: var(--color-accent);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.notice {
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    background: var(--color-tint);
+    color: var(--color-ink);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+@media print {
+    body {
+        background: #fff;
+    }
+
+    .no-print {
+        display: none;
+    }
 }
 
 .map-button {
@@ -229,6 +298,10 @@
 
 .legend-dot--obstructed {
     box-shadow: 0 0 0 2px var(--color-seat-obstructed);
+}
+
+.legend-dot--selected {
+    background: var(--color-accent);
 }
 
 .legend-dot--pillar {

@@ -25,7 +25,7 @@ class SeatPlan
      */
     public function snapshot(): array
     {
-        return Cache::remember(self::CACHE_KEY, self::CACHE_SECONDS, $this->build(...));
+        return Cache::remember(self::CACHE_KEY, self::CACHE_SECONDS, $this->fresh(...));
     }
 
     /**
@@ -35,7 +35,7 @@ class SeatPlan
      *     total: array{free: int, sellable: int}
      * }
      */
-    private function build(): array
+    public function fresh(): array
     {
         $plan = ['seats' => [], 'sections' => [], 'total' => ['free' => 0, 'sellable' => 0]];
 

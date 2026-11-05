@@ -49,9 +49,9 @@ it('draws every seat in its current state', function () {
     $content = $this->get('/plan')->getContent();
 
     expect($content)
-        ->toMatch('/data-seat="P-12-7"\s+data-state="taken"/')
-        ->toMatch('/data-seat="P-1-1"\s+data-state="free"/')
-        ->toMatch('/data-seat="P-4-26"\s+data-state="blocked"/');
+        ->toMatch('/data-seat="P-12-7"\s+data-segment="\d+"\s+data-state="taken"/')
+        ->toMatch('/data-seat="P-1-1"\s+data-segment="\d+"\s+data-state="free"/')
+        ->toMatch('/data-seat="P-4-26"\s+data-segment="\d+"\s+data-state="blocked"/');
 });
 
 it('marks exactly the obstructed seats', function () {

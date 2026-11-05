@@ -87,6 +87,26 @@ export default ({ url, refreshMs, sections, total }) => {
         zoomed: false,
         swiss,
 
+        hint() {
+            return this.zoomed ? 'Tippt auf einen Platz für Details.' : 'Tippt auf einen Bereich, um ihn zu vergrössern.';
+        },
+
+        seatTapped(el) {
+            this.showSeat(el);
+        },
+
+        seatElement(id) {
+            return seats.get(id);
+        },
+
+        seatLabel(el) {
+            const [, row, number] = el.dataset.seat.split('-');
+
+            return `${el.closest('[data-section-seats]').dataset.label} · Reihe ${row} · Platz ${number}`;
+        },
+
+        afterRefresh() {},
+
         init() {
             viewportEl = this.$refs.viewport;
             svg = viewportEl.querySelector('svg');
@@ -200,6 +220,21 @@ export default ({ url, refreshMs, sections, total }) => {
             this.section = id;
             this.moveTo(this.sectionView(id));
             viewportEl.parentElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        },
+
+        /** Shows the given seats with some room around them. */
+        showBounds(ids) {
+            const circles = ids.map((id) => seats.get(id).querySelector('circle').getBBox());
+            const x0 = Math.min(...circles.map((box) => box.x));
+            const y0 = Math.min(...circles.map((box) => box.y));
+            const x1 = Math.max(...circles.map((box) => box.x + box.width));
+            const y1 = Math.max(...circles.map((box) => box.y + box.height));
+            const scale = Math.min(size.width / (x1 - x0 + 120), size.height / (y1 - y0 + 120), SECTION_SCALE);
+            const w = size.width / scale;
+            const h = size.height / scale;
+
+            this.section = null;
+            this.moveTo({ x: (x0 + x1 - w) / 2, y: (y0 + y1 - h) / 2, w, h });
         },
 
         showOverview() {
@@ -325,7 +360,7 @@ export default ({ url, refreshMs, sections, total }) => {
             if (hit) {
                 this.showSection(hit.dataset.section);
             } else if (seat) {
-                this.showSeat(seat);
+                this.seatTapped(seat);
             } else {
                 this.clearSeat();
             }
@@ -345,14 +380,7 @@ export default ({ url, refreshMs, sections, total }) => {
         },
 
         describeSeat() {
-            const [, row, number] = activeSeat.dataset.seat.split('-');
-            const label = activeSeat.closest('[data-section-seats]').dataset.label;
-            const parts = [
-                label,
-                `Reihe ${row}`,
-                `Platz ${number}`,
-                STATE_LABELS[activeSeat.dataset.state],
-            ];
+            const parts = [this.seatLabel(activeSeat), STATE_LABELS[activeSeat.dataset.state]];
 
             if (activeSeat.classList.contains('seat--obstructed')) {
                 parts.push('Sichtbehinderung');
@@ -383,12 +411,14 @@ export default ({ url, refreshMs, sections, total }) => {
                     }
                 }
 
-                this.sections = plan.sections;
-                this.total = plan.total;
+                this.sections = plan.sections ?? this.sections;
+                this.total = plan.total ?? this.total;
 
                 if (activeSeat) {
                     this.describeSeat();
                 }
+
+                this.afterRefresh();
             } catch {
                 // Offline for a moment: keep showing the last known state.
             }

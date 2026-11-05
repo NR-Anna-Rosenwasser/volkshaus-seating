@@ -91,6 +91,29 @@ final class VenueLayout
         }, $this->data()['sections']);
     }
 
+    public function sectionLabel(string $id): string
+    {
+        return collect($this->data()['sections'])->firstWhere('id', $id)['label'] ?? $id;
+    }
+
+    /**
+     * Sections whose rows run away from the stage.
+     *
+     * @return list<string>
+     */
+    public function verticalSections(): array
+    {
+        return collect($this->data()['sections'])
+            ->where('row_label_axis', 'vertical')
+            ->pluck('id')
+            ->all();
+    }
+
+    public function centerX(): float
+    {
+        return ($this->stage()['x0'] + $this->stage()['x1']) / 2;
+    }
+
     /**
      * The SVG viewBox that fits the whole hall.
      *

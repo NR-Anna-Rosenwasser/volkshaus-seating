@@ -16,10 +16,14 @@ return [
         'webhook_secret' => env('HIEVENTS_WEBHOOK_SECRET'),
     ],
 
+    'event_name' => env('EVENT_NAME'),
     'event_date' => env('EVENT_DATE'),
     'doors_at' => env('DOORS_AT'),
     'selection_opens_at' => env('SELECTION_OPENS_AT'),
     'selection_deadline' => env('SELECTION_DEADLINE'),
+    // Best seats first. Unlisted sections come last.
+    'section_preference' => ['parterre', 'galerie-mitte', 'galerie-links', 'galerie-rechts'],
+
     'reminder_offsets_days' => array_map('intval', $ids('REMINDER_OFFSETS_DAYS') ?: [14, 7, 2]),
     'final_mail_offset_days' => (int) env('FINAL_MAIL_OFFSET_DAYS', 2),
     'mail_per_second' => (int) env('MAIL_PER_SECOND', 5),

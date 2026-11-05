@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AttendeeStatus;
 use App\Enums\OrderStatus;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Support\Facades\DB;
 
 #[Fillable([
     'hievents_order_id', 'hievents_public_id', 'short_id',
@@ -35,6 +37,36 @@ class Order extends Model
             'wheelchair_notified_at' => 'datetime',
             'reminders_sent' => 'integer',
         ];
+    }
+
+    /**
+     * Serialises all changes to one order until the transaction ends. Seat
+     * rows are locked after this, always in id order.
+     */
+    public static function lockByHieventsId(string $hieventsOrderId): void
+    {
+        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ["hievents-order-{$hieventsOrderId}"]);
+    }
+
+    /**
+     * Replaces the personal link, so an older one stops working. Only the
+     * hash is stored: the returned token cannot be recovered later.
+     */
+    public function issueToken(): string
+    {
+        $token = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+
+        $this->update(['token_hash' => hash('sha256', $token)]);
+
+        return $token;
+    }
+
+    public function seatsNeeded(): int
+    {
+        return $this->attendees()
+            ->where('status', AttendeeStatus::Active)
+            ->where('needs_seat', true)
+            ->count();
     }
 
     public function attendees(): HasMany

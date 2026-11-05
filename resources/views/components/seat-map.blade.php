@@ -1,4 +1,4 @@
-@props(['layout', 'states'])
+@props(['layout', 'states', 'highlight' => []])
 
 @php
     $viewBox = $layout->viewBox();
@@ -25,8 +25,13 @@
         <g class="seat-map__section" data-section-seats="{{ $section['id'] }}" data-label="{{ $section['label'] }}">
             @foreach ($layout->seats($section['id']) as $seat)
                 <g
-                    @class(['seat', 'seat--obstructed' => in_array('obstructed', $seat['flags'], true)])
+                    @class([
+                        'seat',
+                        'seat--obstructed' => in_array('obstructed', $seat['flags'], true),
+                        'is-selected' => in_array($seat['id'], $highlight, true),
+                    ])
                     data-seat="{{ $seat['id'] }}"
+                    data-segment="{{ $seat['segment'] }}"
                     data-state="{{ $states[$seat['id']] ?? 'blocked' }}"
                 ><circle cx="{{ $seat['x'] }}" cy="{{ $seat['y'] }}" r="{{ $radius }}" /><text x="{{ $seat['x'] }}" y="{{ $seat['y'] }}">{{ $seat['number'] }}</text></g>
             @endforeach

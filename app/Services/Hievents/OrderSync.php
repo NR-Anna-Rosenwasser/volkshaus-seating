@@ -81,8 +81,7 @@ class OrderSync
         $this->notices = [];
 
         $result = DB::transaction(function () use ($hieventsOrderId, $work): SyncResult {
-            // Deliveries for one order can run in parallel. Seat rows are locked later, always in id order.
-            DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ["hievents-order-{$hieventsOrderId}"]);
+            Order::lockByHieventsId($hieventsOrderId);
 
             return $work();
         });
