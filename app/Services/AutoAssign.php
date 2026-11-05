@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Enums\AssignedBy;
-use App\Enums\AttendeeStatus;
 use App\Enums\AuditActor;
 use App\Enums\MailType;
 use App\Enums\OrderStatus;
@@ -12,7 +11,6 @@ use App\Models\Order;
 use App\Models\Seat;
 use App\Support\AutoAssignment;
 use App\Support\SelectionWindow;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -122,9 +120,7 @@ class AutoAssign
     {
         return Order::choosingForThemselves()
             ->missingSeats()
-            ->withCount(['attendees as tickets' => fn (Builder $query) => $query
-                ->where('status', AttendeeStatus::Active)
-                ->where('needs_seat', true)])
+            ->withTicketCount()
             ->orderByDesc('tickets')
             ->orderBy('created_at')
             ->orderBy('id')

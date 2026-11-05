@@ -17,7 +17,7 @@
             <ul class="space-y-2">
                 @foreach ($seats as $seat)
                     <li class="text-2xl leading-snug font-bold text-ink">
-                        {{ $layout->sectionLabel($seat->section) }} · Reihe {{ $seat->row }} · Platz {{ $seat->number }}
+                        {{ $layout->seatLabel($seat) }}
                     </li>
                 @endforeach
             </ul>

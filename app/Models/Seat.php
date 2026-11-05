@@ -56,6 +56,22 @@ class Seat extends Model
         };
     }
 
+    /**
+     * What a seat goes back to when its person leaves. Wheelchair seats are
+     * assigned by hand and must not reappear as free.
+     *
+     * @return array<string, mixed>
+     */
+    public function vacantAttributes(): array
+    {
+        return [
+            'attendee_id' => null,
+            'assigned_at' => null,
+            'assigned_by' => null,
+            'block_reason' => $this->hasFlag('wheelchair') ? BlockReason::Wheelchair : null,
+        ];
+    }
+
     public function hasFlag(string $flag): bool
     {
         return in_array($flag, $this->flags ?? [], true);

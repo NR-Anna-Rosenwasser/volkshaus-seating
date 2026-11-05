@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Seat;
+
 /**
  * The static geometry of the hall, read from the seat data file. Who sits
  * where lives in the database; this class only knows how the room looks.
@@ -89,6 +91,11 @@ final class VenueLayout
                 'rowLabels' => $this->rowLabels($seats, $section['row_label_axis'] === 'vertical'),
             ];
         }, $this->data()['sections']);
+    }
+
+    public function seatLabel(Seat $seat): string
+    {
+        return "{$this->sectionLabel($seat->section)} · Reihe {$seat->row} · Platz {$seat->number}";
     }
 
     public function sectionLabel(string $id): string

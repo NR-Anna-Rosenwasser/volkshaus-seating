@@ -73,6 +73,7 @@ class SeatMail extends Mailable implements ShouldQueue
         $deadline = SelectionWindow::format($window->deadline());
         $selection = $this->order->selectionUrl();
         $pass = "{$selection}/ticket";
+        $canChange = $window->isOpen() && ! $this->order->needs_wheelchair;
         $needed = $this->order->seatsNeeded();
         $entry = $this->order->say(
             'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur deinen Sitzplatz.',
@@ -103,13 +104,13 @@ class SeatMail extends Mailable implements ShouldQueue
             MailType::Confirmation => [
                 'lines' => [$this->order->say('Das ist dein aktueller Platz:', 'Das sind eure aktuellen Plätze:')],
                 'closing' => [
-                    $window->isOpen()
+                    $canChange
                         ? $this->order->say("Du kannst ihn bis {$deadline} ändern.", "Ihr könnt sie bis {$deadline} ändern.")
                         : $changes,
                     $entry,
                 ],
-                'buttonLabel' => $window->isOpen() ? $this->order->say('Platz ändern', 'Plätze ändern') : 'Sitzplatz-Pass ansehen',
-                'buttonUrl' => $window->isOpen() ? $selection : $pass,
+                'buttonLabel' => $canChange ? $this->order->say('Platz ändern', 'Plätze ändern') : 'Sitzplatz-Pass ansehen',
+                'buttonUrl' => $canChange ? $selection : $pass,
             ],
             MailType::Reminder => [
                 'lines' => [
@@ -161,7 +162,7 @@ class SeatMail extends Mailable implements ShouldQueue
         return $this->order->seats()
             ->orderBy('section')->orderBy('row')->orderBy('number')
             ->get()
-            ->map(fn (Seat $seat): string => "{$layout->sectionLabel($seat->section)} · Reihe {$seat->row} · Platz {$seat->number}")
+            ->map(fn (Seat $seat): string => $layout->seatLabel($seat))
             ->all();
     }
 }

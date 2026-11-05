@@ -1,5 +1,4 @@
 @php
-    $labelOf = fn ($seat) => $layout->sectionLabel($seat->section)." · Reihe {$seat->row} · Platz {$seat->number}";
     $contact = config('seating.contact_email');
     $say = fn (string $solo, string $group): string => $needed === 1 ? $solo : $group;
 @endphp
@@ -149,7 +148,7 @@
                 <section aria-label="{{ $say('Dein Platz', 'Eure Plätze') }}" class="space-y-2">
                     <ul class="space-y-1 text-base font-semibold text-ink">
                         @foreach ($seats as $seat)
-                            <li>{{ $labelOf($seat) }}</li>
+                            <li>{{ $layout->seatLabel($seat) }}</li>
                         @endforeach
                     </ul>
                     <a class="font-semibold text-accent underline" href="{{ route('selection.ticket', request()->route()->originalParameter('token')) }}">Sitzplatz-Pass ansehen</a>

@@ -4,7 +4,6 @@ namespace App\Services\Hievents;
 
 use App\Enums\AttendeeStatus;
 use App\Enums\AuditActor;
-use App\Enums\BlockReason;
 use App\Enums\MailType;
 use App\Enums\OrderStatus;
 use App\Enums\SyncResult;
@@ -226,13 +225,7 @@ class OrderSync
                 'before' => ['assigned_by' => $seat->assigned_by?->value],
             ]);
 
-            $seat->update([
-                'attendee_id' => null,
-                'assigned_at' => null,
-                'assigned_by' => null,
-                // Wheelchair seats are assigned by hand and must not reappear as free.
-                'block_reason' => $seat->hasFlag('wheelchair') ? BlockReason::Wheelchair : null,
-            ]);
+            $seat->update($seat->vacantAttributes());
         }
     }
 

@@ -66,6 +66,13 @@ class Order extends Model
         $query->whereHas('attendees', fn (Builder $attendees) => $attendees->withoutSeat());
     }
 
+    public function scopeWithTicketCount(Builder $query): void
+    {
+        $query->withCount(['attendees as tickets' => fn (Builder $attendees) => $attendees
+            ->where('status', AttendeeStatus::Active)
+            ->where('needs_seat', true)]);
+    }
+
     /**
      * Replaces the personal link, so older ones stop working.
      */
