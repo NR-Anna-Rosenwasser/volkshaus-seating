@@ -277,7 +277,7 @@ it('only needs seats for active seated attendees', function () {
     Attendee::factory()->for($this->order)->create(['needs_seat' => false]);
 
     saveSeats(['P-5-1'])->assertOk();
-    $this->get("/s/{$this->token}")->assertSeeText('Wählt einen Platz');
+    $this->get("/s/{$this->token}")->assertSeeText('Wähle einen Platz');
 });
 
 it('suggests seats next to each other without saving them', function () {
