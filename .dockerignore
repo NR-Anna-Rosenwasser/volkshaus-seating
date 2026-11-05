@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 .git
+.github
 node_modules
 public/build
 public/css/filament

@@ -3813,3 +3813,107 @@ Occurrence Cancelled	occurrence.cancelled	A date is cancelled on a recurring eve
 - `ProductResource` — shown above.
 - `QuestionAnswerViewResource` — shown above.
 - `TaxAndFeeResource` — shown above.
+
+---
+
+# Webhooks and statuses (Hi.Events v2.0.0)
+
+Not part of the API reference above. Read from the v2.0.0 source and checked against real deliveries
+from a local v2.0.0 instance (5 November 2026). Anything not tested that way says so.
+
+## Delivery
+
+- `POST` with `Content-Type: application/json`, `User-Agent: GuzzleHttp/7`, `X-Webhook-Source: Hi.Events`.
+- `Signature` header: lowercase hex HMAC-SHA256 of the raw request body, keyed with the webhook's secret.
+  Matched 22 of 22 captured deliveries.
+- Secrets are per webhook. Each new webhook gets its own.
+- Internal targets are rejected unless the host is in `APP_ALLOWED_INTERNAL_WEBHOOK_HOSTS`: `localhost`,
+  private IPs, and `.local`, `.internal`, `.intranet`, `.localhost` names. `*.ddev.site` resolves to
+  127.0.0.1, so it is rejected too.
+
+```json
+{
+  "event_type": "order.created",
+  "event_sent_at": "2026-11-05T13:18:02+00:00",
+  "payload": {}
+}
+```
+
+`payload` is the same `OrderResource` / `AttendeeResource` as the API, including `event_id`, so ignore
+events for other events.
+
+## Event types
+
+`order.created`, `order.updated`, `order.marked_as_paid`, `order.refunded`, `order.cancelled`,
+`attendee.created`, `attendee.updated`, `attendee.cancelled`. Also exist, not relevant here:
+`product.*`, `event.*`, `checkin.*`, `occurrence.cancelled`.
+
+`order.*` payloads include `attendees` and `question_answers`. `order_items` and attendees carry
+`product_id`; attendees also carry `product_price_id`.
+
+## What actually happens
+
+| Action | Deliveries, in order |
+|---|---|
+| Free order completed | `attendee.created` per attendee (`ACTIVE`), then `order.created` (`COMPLETED`, `NO_PAYMENT_REQUIRED`) |
+| Offline order placed | `attendee.created` per attendee (`AWAITING_PAYMENT`), then `order.created` (`AWAITING_OFFLINE_PAYMENT`) |
+| Offline order marked paid | Only `order.marked_as_paid` (`COMPLETED`, `PAYMENT_RECEIVED`, attendees now `ACTIVE`) |
+| Order cancelled | `attendee.cancelled` per attendee, then `order.cancelled` |
+| One attendee cancelled | Only `attendee.cancelled`, with `order_id`. Nothing for the order |
+| Order details edited | `order.updated` |
+| Cancelled attendee reactivated | **Nothing.** Only reconciliation can notice this |
+
+Consequences for the seat app:
+
+- `attendee.created` arrives before its order and can be unpaid. Act on the order events.
+- A paid offline order sends no `attendee.updated`, so `order.marked_as_paid` must be handled.
+- No `order.*` event fires while an order is only `RESERVED` (checkout in progress).
+
+Not tested: `order.refunded` (offline orders have no refund flow, it needs Stripe) and
+`attendee.updated`.
+
+## Statuses
+
+- Order `status`: `RESERVED`, `CANCELLED`, `COMPLETED`, `AWAITING_OFFLINE_PAYMENT`, `ABANDONED`.
+- Order `payment_status`: `NO_PAYMENT_REQUIRED`, `AWAITING_PAYMENT`, `AWAITING_OFFLINE_PAYMENT`,
+  `PAYMENT_FAILED`, `PAYMENT_RECEIVED`.
+- Attendee `status`: `ACTIVE`, `AWAITING_PAYMENT`, `CANCELLED`.
+
+An order counts as paid when `status` is `COMPLETED`.
+
+## Checkout questions
+
+An order-level answer in `question_answers`:
+
+```json
+{
+  "question_id": 1,
+  "title": "Rollstuhlplatz",
+  "belongs_to": "ORDER",
+  "question_type": "CHECKBOX",
+  "answer": ["Ja"],
+  "text_answer": "Ja",
+  "order_id": 4,
+  "event_id": 1
+}
+```
+
+Ticket-level answers have `belongs_to: PRODUCT` and also carry `attendee_id` and `product_id`. Unticked
+boxes send no answer.
+
+Where answers appear:
+
+| Source | Top-level `question_answers` | On each attendee |
+|---|---|---|
+| `order.*` webhooks | Yes | Yes |
+| `GET /events/{id}/orders/{order_id}` | Yes | No |
+| `GET /events/{id}/orders` | No | No |
+| `GET /events/{id}/attendees` | Not applicable | No |
+
+Reconciliation has to fetch single orders to see an answer.
+
+## API keys
+
+- Sent as `Authorization: Bearer <key>`. A `READ_ONLY` key reads events, orders and attendees and gets
+  `403` on writes, confirmed.
+- Lists are paginated with `per_page` and `page`, and report `meta.last_page`.

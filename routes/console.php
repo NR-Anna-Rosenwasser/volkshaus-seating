@@ -1,8 +1,14 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+Schedule::command('seating:heartbeat')->everyMinute();
+Schedule::command('horizon:snapshot')->everyFiveMinutes();
+Schedule::command('seating:reconcile')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('seating:send-links')->everyMinute()->withoutOverlapping();
+Schedule::command('seating:send-reminders')->hourly()->withoutOverlapping();
+Schedule::command('seating:send-final')->hourly()->withoutOverlapping();
+Schedule::command('seating:check-auto-assign')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('seating:backup')->dailyAt('03:00')->withoutOverlapping();
+// After the backup, so a wrong EVENT_DATE can still be recovered from last night's dump.
+Schedule::command('seating:purge')->dailyAt('04:00')->withoutOverlapping();

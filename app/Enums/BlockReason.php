@@ -11,4 +11,17 @@ enum BlockReason: string
     case Wheelchair = 'wheelchair';
     case Staff = 'staff';
     case Other = 'other';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Vip => 'VIP',
+            self::Security => 'Sicherheit',
+            self::Press => 'Presse',
+            self::Tech => 'Technik',
+            self::Wheelchair => 'Rollstuhl',
+            self::Staff => 'Team',
+            self::Other => 'Anderes',
+        };
+    }
 }

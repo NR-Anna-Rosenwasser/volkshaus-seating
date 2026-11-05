@@ -1,6 +1,7 @@
 x-app: &app
+  # Pulled from GHCR on the server. `build` is there for building it locally.
+  image: ghcr.io/nr-anna-rosenwasser/volkshaus-seating:${APP_VERSION:-latest}
   build: .
-  image: volkshaus-seating:latest
   restart: unless-stopped
   env_file: .env
   environment: &app-environment
@@ -17,6 +18,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/up') === false ? 1 : 0);"]
       interval: 15s
@@ -24,10 +27,11 @@ services:
       retries: 5
       start_period: 30s
 
-  queue:
+  horizon:
     <<: *app
-    command: ["php", "artisan", "queue:work", "--tries=3", "--backoff=30", "--max-time=3600"]
-    stop_grace_period: 60s
+    command: ["php", "artisan", "horizon"]
+    # Longer than the job timeout, so running jobs can finish.
+    stop_grace_period: 130s
     healthcheck:
       disable: true
     depends_on:
@@ -37,11 +41,31 @@ services:
   scheduler:
     <<: *app
     command: ["php", "artisan", "schedule:work"]
+    environment:
+      <<: *app-environment
+      BACKUP_PATH: /backups
+    volumes:
+      - backups:/backups
     healthcheck:
       disable: true
     depends_on:
       app:
         condition: service_healthy
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # Append-only, so queued mails survive a restart.
+    command: ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   postgres:
     image: postgres:17-alpine
@@ -60,3 +84,5 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:
+  backups:

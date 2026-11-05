@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\AssignedBy;
 use App\Enums\BlockReason;
+use App\Enums\SeatState;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -44,6 +45,31 @@ class Seat extends Model
     public function scopeSellable(Builder $query): void
     {
         $query->whereNull('block_reason');
+    }
+
+    public function state(): SeatState
+    {
+        return match (true) {
+            $this->block_reason !== null => SeatState::Blocked,
+            $this->attendee_id !== null => SeatState::Taken,
+            default => SeatState::Free,
+        };
+    }
+
+    /**
+     * What a seat goes back to when its person leaves. Wheelchair seats are
+     * assigned by hand and must not reappear as free.
+     *
+     * @return array<string, mixed>
+     */
+    public function vacantAttributes(): array
+    {
+        return [
+            'attendee_id' => null,
+            'assigned_at' => null,
+            'assigned_by' => null,
+            'block_reason' => $this->hasFlag('wheelchair') ? BlockReason::Wheelchair : null,
+        ];
     }
 
     public function hasFlag(string $flag): bool

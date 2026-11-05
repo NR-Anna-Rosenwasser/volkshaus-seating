@@ -2,6 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\Order;
+use App\Services\AdminAlert;
+use App\Support\VenueLayout;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Mail\SendQueuedMailable;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +21,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(VenueLayout::class, fn () => new VenueLayout(config('seating.seat_data_path')));
     }
 
     /**
@@ -19,6 +29,18 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Route::bind('token', fn (string $token): Order => Order::where('token_hash', hash('sha256', $token))->firstOrFail());
+
+        Queue::failing(function (JobFailed $event): void {
+            if ($event->job->resolveName() === SendQueuedMailable::class) {
+                app(AdminAlert::class)->mailFailed();
+            }
+        });
+
+        // Generous: an open map polls every 10 seconds, and a whole group can share one IP.
+        RateLimiter::for('selection', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        RateLimiter::for('public', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        // High, because a reconcile catches what is missed but a busy sale must not trip it.
+        RateLimiter::for('webhook', fn (Request $request) => Limit::perMinute(600)->by($request->ip()));
     }
 }

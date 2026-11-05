@@ -68,9 +68,11 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Above the worker timeout in config/horizon.php, or slow jobs would run twice.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 150),
             'block_for' => null,
-            'after_commit' => false,
+            // Redis is outside the Postgres transaction. This keeps a rollback from sending mail.
+            'after_commit' => true,
         ],
 
         'deferred' => [

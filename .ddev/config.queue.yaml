@@ -1,0 +1,9 @@
+# Horizon and scheduler while DDEV runs. Horizon keeps old code in memory:
+# after changing jobs or mails, run `ddev exec php artisan horizon:terminate`.
+web_extra_daemons:
+  - name: horizon
+    command: php artisan horizon
+    directory: /var/www/html
+  - name: scheduler
+    command: php artisan schedule:work
+    directory: /var/www/html

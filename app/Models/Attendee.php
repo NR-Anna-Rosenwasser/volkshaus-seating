@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\AttendeeStatus;
 use Database\Factories\AttendeeFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,6 +28,11 @@ class Attendee extends Model
             'status' => AttendeeStatus::class,
             'needs_seat' => 'boolean',
         ];
+    }
+
+    public function scopeWithoutSeat(Builder $query): void
+    {
+        $query->where('status', AttendeeStatus::Active)->where('needs_seat', true)->whereDoesntHave('seat');
     }
 
     public function order(): BelongsTo
