@@ -6,4 +6,226 @@
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+
+    --color-paper: #f6f4ef;
+    --color-ink: #1c1917;
+    --color-muted: #625d56;
+    --color-line: #e0dcd3;
+
+    --color-seat-free: #0f766e;
+    --color-seat-taken: #cfcac1;
+    --color-seat-taken-text: #57534e;
+    --color-seat-blocked: #a8a29e;
+    --color-seat-obstructed: #e08600;
+    --color-seat-active: #1c1917;
+}
+
+[x-cloak] {
+    display: none !important;
+}
+
+.seat-map-viewport {
+    height: min(66svh, 128vw);
+    min-height: 22rem;
+}
+
+@media (min-width: 64rem) {
+    .seat-map-viewport {
+        height: min(72svh, 52rem);
+    }
+}
+
+/* Overview: swipes scroll the page. Zoomed: gestures belong to the map, and it
+   stays shorter than the screen so there is always room to scroll past it. */
+.seat-map {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: pan-y pinch-zoom;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.seat-map.is-zoomed {
+    touch-action: none;
+    cursor: grab;
+}
+
+.seat-map.is-zoomed:active {
+    cursor: grabbing;
+}
+
+.seat-map text {
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+}
+
+.seat-map__stage rect {
+    fill: var(--color-paper);
+    stroke: var(--color-ink);
+    stroke-width: 1;
+}
+
+.seat-map__stage text {
+    fill: var(--color-ink);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.seat-map__labels text {
+    fill: var(--color-ink);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.seat-map.shows-numbers .seat-map__labels text {
+    display: none;
+}
+
+.seat-map__pillars circle {
+    fill: var(--color-ink);
+}
+
+.seat-map__rows text {
+    display: none;
+    fill: var(--color-muted);
+    font-size: 6px;
+    font-weight: 600;
+}
+
+.seat-map.shows-numbers .seat-map__rows text {
+    display: block;
+}
+
+.seat-map__hit {
+    fill: transparent;
+    cursor: pointer;
+    transition: fill 0.15s;
+}
+
+@media (hover: hover) {
+    .seat-map__hit:hover {
+        fill: rgb(28 25 23 / 0.06);
+    }
+}
+
+.seat-map.is-zoomed .seat-map__hit {
+    pointer-events: none;
+}
+
+.seat circle {
+    stroke: transparent;
+    stroke-width: 1.3;
+}
+
+.seat text {
+    display: none;
+    font-size: 5.4px;
+    font-weight: 600;
+}
+
+.seat-map.shows-numbers .seat text {
+    display: block;
+}
+
+.seat[data-state='free'] circle {
+    fill: var(--color-seat-free);
+}
+
+.seat[data-state='free'] text {
+    fill: #fff;
+}
+
+.seat[data-state='taken'] circle {
+    fill: var(--color-seat-taken);
+}
+
+.seat[data-state='taken'] text {
+    fill: var(--color-seat-taken-text);
+}
+
+.seat[data-state='blocked'] circle {
+    fill: #fff;
+    stroke: var(--color-seat-blocked);
+    stroke-width: 0.8;
+    stroke-dasharray: 1.6 1.4;
+}
+
+.seat[data-state='blocked'] text {
+    fill: var(--color-seat-blocked);
+}
+
+.seat--obstructed circle {
+    stroke: var(--color-seat-obstructed);
+}
+
+.seat.is-active circle {
+    stroke: var(--color-seat-active);
+    stroke-width: 1.8;
+    stroke-dasharray: none;
+}
+
+.map-button {
+    display: grid;
+    place-items: center;
+    height: 2.75rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.5rem;
+    background: #fff;
+    color: var(--color-ink);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgb(28 25 23 / 0.12);
+    cursor: pointer;
+}
+
+.section-button {
+    width: 100%;
+    min-height: 3.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.5rem;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.section-button[aria-current='true'] {
+    border-color: var(--color-ink);
+    box-shadow: inset 0 0 0 1px var(--color-ink);
+}
+
+.map-button:focus-visible,
+.section-button:focus-visible {
+    outline: 2px solid var(--color-seat-free);
+    outline-offset: 2px;
+}
+
+.legend-dot {
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 50%;
+}
+
+.legend-dot[data-state='free'] {
+    background: var(--color-seat-free);
+}
+
+.legend-dot[data-state='taken'] {
+    background: var(--color-seat-taken);
+}
+
+.legend-dot[data-state='blocked'] {
+    border: 1.5px dashed var(--color-seat-blocked);
+    background: #fff;
+}
+
+.legend-dot--obstructed {
+    box-shadow: 0 0 0 2px var(--color-seat-obstructed);
+}
+
+.legend-dot--pillar {
+    background: var(--color-ink);
 }
