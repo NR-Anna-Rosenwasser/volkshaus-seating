@@ -20,7 +20,8 @@
     --color-seat-taken: #e8e5e3;
     --color-seat-taken-text: #6b6b6b;
     --color-seat-blocked: #a8a3a0;
-    --color-seat-obstructed: #e5ae00;
+    --color-seat-obstructed: #f7cf3b;
+    --color-pillar: #6b6b6b;
     --color-seat-active: #181818;
 }
 
@@ -89,8 +90,8 @@
     display: none;
 }
 
-.seat-map__pillars circle {
-    fill: var(--color-ink);
+.seat-map__pillars rect {
+    fill: var(--color-pillar);
 }
 
 .seat-map__rows text {
@@ -162,18 +163,23 @@
     fill: var(--color-seat-blocked);
 }
 
-.seat--obstructed circle {
-    stroke: var(--color-seat-obstructed);
+.seat--obstructed[data-state='free'] circle {
+    fill: var(--color-seat-obstructed);
 }
 
 .seat.is-selected circle {
-    fill: var(--color-accent);
-    stroke: var(--color-accent);
+    fill: var(--color-ink);
+    stroke: var(--color-seat-free);
+    stroke-width: 1.6;
     stroke-dasharray: none;
 }
 
 .seat.is-selected text {
     fill: #fff;
+}
+
+.seat.is-selected.is-active circle {
+    stroke: var(--color-seat-free);
 }
 
 .seat-map--pass .seat:not(.is-selected) circle {
@@ -309,14 +315,16 @@
     background: #fff;
 }
 
-.legend-dot--obstructed {
-    box-shadow: 0 0 0 2px var(--color-seat-obstructed);
+.legend-dot--obstructed[data-state='free'] {
+    background: var(--color-seat-obstructed);
 }
 
 .legend-dot--selected {
-    background: var(--color-accent);
+    background: var(--color-ink);
+    box-shadow: 0 0 0 2px var(--color-seat-free);
 }
 
 .legend-dot--pillar {
-    background: var(--color-ink);
+    border-radius: 0;
+    background: var(--color-pillar);
 }

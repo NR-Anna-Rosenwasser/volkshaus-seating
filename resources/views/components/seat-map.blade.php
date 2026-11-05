@@ -40,7 +40,7 @@
 
     <g class="seat-map__pillars">
         @foreach ($layout->pillars() as $pillar)
-            <circle cx="{{ $pillar['x'] }}" cy="{{ $pillar['y'] }}" r="{{ $radius }}" />
+            <rect x="{{ $pillar['x'] - 3.6 }}" y="{{ $pillar['y'] - 3.6 }}" width="7.2" height="7.2" />
         @endforeach
     </g>
 
