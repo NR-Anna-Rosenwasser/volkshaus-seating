@@ -57,8 +57,22 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
             this.paint();
         },
 
-        labels() {
-            return this.selected.map((id) => this.seatLabel(this.seatElement(id)));
+        selectedSeats() {
+            return this.selected.map((id) => ({ id, label: this.seatLabel(this.seatElement(id)) }));
+        },
+
+        remove(id) {
+            this.selected = this.selected.filter((seat) => seat !== id);
+            this.notice = null;
+            this.saved = false;
+            this.paint();
+        },
+
+        clearAll() {
+            this.selected = [];
+            this.notice = null;
+            this.saved = false;
+            this.paint();
         },
 
         hasObstructed() {
@@ -79,8 +93,27 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 && numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1);
         },
 
+        /** One free seat left between two of the group's own seats. */
+        hasSingleGap() {
+            return this.selected.some((id) => {
+                const [prefix, row, number] = id.split('-');
+                const between = this.seatElement(`${prefix}-${row}-${Number(number) + 1}`);
+                const next = `${prefix}-${row}-${Number(number) + 2}`;
+
+                return this.selected.includes(next)
+                    && between?.dataset.state === 'free'
+                    && !this.selected.includes(between.dataset.seat)
+                    && between.dataset.segment === this.seatElement(id).dataset.segment
+                    && this.seatElement(next).dataset.segment === this.seatElement(id).dataset.segment;
+            });
+        },
+
         complete() {
             return this.selected.length === this.needed;
+        },
+
+        canSave() {
+            return this.complete() && !this.hasSingleGap() && !this.busy;
         },
 
         afterRefresh() {
@@ -157,7 +190,9 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 } else if (response.ok) {
                     this.saved = true;
                 } else {
-                    this.notice = 'Das Speichern hat nicht geklappt. Bitte versucht es noch einmal.';
+                    const body = await response.json().catch(() => ({}));
+
+                    this.notice = body.errors?.seats?.[0] ?? 'Das Speichern hat nicht geklappt. Bitte versucht es noch einmal.';
                 }
             } catch {
                 this.notice = 'Das Speichern hat nicht geklappt. Bitte prüft eure Verbindung.';

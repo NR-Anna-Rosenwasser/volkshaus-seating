@@ -154,6 +154,47 @@ it('rejects wheelchair seats', function () {
     saveSeats(['P-4-26', 'P-4-27'])->assertConflict();
 });
 
+it('rejects one free seat between a group\'s own seats', function () {
+    saveSeats(['P-5-1', 'P-5-3'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['seats' => 'Bitte rückt zusammen']);
+
+    expect($this->order->seats()->count())->toBe(0);
+});
+
+it('counts the group\'s own old seat as a free gap', function () {
+    saveSeats(['P-5-1', 'P-5-2'])->assertOk();
+
+    saveSeats(['P-5-1', 'P-5-3'])->assertUnprocessable();
+
+    expect($this->order->seats()->pluck('seats.id')->sort()->values()->all())->toBe(['P-5-1', 'P-5-2']);
+});
+
+it('allows a gap that someone else already took', function () {
+    otherOrderOn('P-5-2');
+
+    saveSeats(['P-5-1', 'P-5-3'])->assertOk();
+});
+
+it('allows a gap that is blocked', function () {
+    Seat::find('P-5-2')->update(['block_reason' => BlockReason::Press]);
+
+    saveSeats(['P-5-1', 'P-5-3'])->assertOk();
+});
+
+it('allows bigger gaps and separate rows', function (array $seats) {
+    saveSeats($seats)->assertOk();
+})->with([
+    'two seats apart' => [['P-5-1', 'P-5-4']],
+    'other rows' => [['P-5-1', 'P-6-3']],
+]);
+
+it('does not count seats across a pillar as a gap', function () {
+    expect(Seat::find('P-17-3')->segment)->not->toBe(Seat::find('P-17-5')->segment);
+
+    saveSeats(['P-17-3', 'P-17-5'])->assertOk();
+});
+
 it('rejects changes after the deadline but shows the seats', function () {
     saveSeats(['P-5-1', 'P-5-2'])->assertOk();
 

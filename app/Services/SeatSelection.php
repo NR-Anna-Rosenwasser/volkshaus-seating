@@ -22,6 +22,8 @@ use Illuminate\Validation\ValidationException;
  */
 class SeatSelection
 {
+    public const SINGLE_GAP_MESSAGE = 'Zwischen euren Plätzen bleibt ein einzelner Platz frei. Bitte rückt zusammen.';
+
     public function __construct(private readonly SelectionWindow $window) {}
 
     /**
@@ -72,6 +74,7 @@ class SeatSelection
             }
 
             $this->assertAvailable($seats, $seatIds, $attendees->modelKeys());
+            $this->assertNoSingleGaps($seats->only($seatIds), $attendees->modelKeys());
             $this->assign($order, $seats, $seatIds, $attendees);
 
             $order->update(['seats_confirmed_at' => now()]);
@@ -97,6 +100,42 @@ class SeatSelection
 
         if ($conflicts !== []) {
             throw new SeatConflict($conflicts);
+        }
+    }
+
+    /**
+     * A group may not leave one free seat between its own seats. This can
+     * never trap anyone: that seat is free, so they can simply take it.
+     *
+     * @param  Collection<string, Seat>  $requested
+     * @param  list<int>  $attendeeIds
+     *
+     * @throws ValidationException
+     */
+    private function assertNoSingleGaps(Collection $requested, array $attendeeIds): void
+    {
+        $segments = $requested->groupBy(fn (Seat $seat): string => "{$seat->section}|{$seat->row}|{$seat->segment}");
+
+        foreach ($segments as $segment) {
+            $numbers = $segment->pluck('number')->sort()->values();
+
+            foreach ($numbers->sliding(2) as $pair) {
+                if ($pair->last() - $pair->first() !== 2) {
+                    continue;
+                }
+
+                $seat = $segment->first();
+                $between = Seat::query()
+                    ->where(['section' => $seat->section, 'row' => $seat->row, 'segment' => $seat->segment, 'number' => $pair->first() + 1])
+                    ->first();
+
+                if ($between !== null && $between->block_reason === null
+                    && ($between->attendee_id === null || in_array($between->attendee_id, $attendeeIds, true))) {
+                    throw ValidationException::withMessages([
+                        'seats' => self::SINGLE_GAP_MESSAGE,
+                    ]);
+                }
+            }
         }
     }
 
