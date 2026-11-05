@@ -80,6 +80,27 @@ it('keeps groups on ihr on the seat pages', function () {
         ->assertSeeText('Eure Wahl');
 });
 
+it('offers groups help with finding seats', function () {
+    $this->get("/s/{$this->token}")
+        ->assertSeeText('Findet ihr keine Plätze für eure Gruppe?')
+        ->assertSee('mailto:hallo@example.ch');
+});
+
+it('offers help without a contact address too', function () {
+    config(['seating.contact_email' => null]);
+
+    $this->get("/s/{$this->token}")
+        ->assertSeeText('Meldet euch bei uns')
+        ->assertDontSee('mailto:');
+});
+
+it('offers no group help to a single ticket', function () {
+    $order = Order::factory()->create();
+    Attendee::factory()->for($order)->create();
+
+    $this->get('/s/'.$order->issueToken())->assertDontSeeText('Gruppe');
+});
+
 it('shows a friendly page for an unknown link', function () {
     $this->get('/s/nonsense')->assertNotFound()->assertSeeText('Diese Seite gibt es nicht');
 });

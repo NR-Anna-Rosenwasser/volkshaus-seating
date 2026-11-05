@@ -295,6 +295,81 @@ it('prints a summary after the real run', function () {
         ->assertSuccessful();
 });
 
+describe('overdue alert', function () {
+    beforeEach(function () {
+        config(['seating.event_date' => '2027-02-01 20:00']);
+    });
+
+    it('alerts three hours after the deadline if nobody ran it', function () {
+        waitingOrder(2, ['last_name' => 'Geheim']);
+
+        $this->travelTo('2027-01-26 02:58:00');
+        $this->artisan('seating:check-auto-assign')->assertSuccessful();
+        Mail::assertNotSent(AdminAlertMail::class);
+
+        $this->travelTo('2027-01-26 03:00:00');
+        $this->artisan('seating:check-auto-assign')->assertSuccessful();
+        Mail::assertSent(AdminAlertMail::class, fn (AdminAlertMail $mail) => $mail->hasTo('admin@example.ch')
+            && str_contains($mail->render(), '1 Bestellungen warten')
+            && ! str_contains($mail->render(), 'Geheim'));
+    });
+
+    it('repeats once a day until it has been run', function () {
+        waitingOrder(2);
+        $this->travelTo('2027-01-26 12:00:00');
+
+        $this->artisan('seating:check-auto-assign');
+        $this->artisan('seating:check-auto-assign');
+        Mail::assertSent(AdminAlertMail::class, 1);
+
+        $this->travelTo('2027-01-27 12:01:00');
+        $this->artisan('seating:check-auto-assign');
+        Mail::assertSent(AdminAlertMail::class, 2);
+    });
+
+    it('stays quiet once it has been run, even for orders that did not fit', function () {
+        leaveFree([]);
+        waitingOrder(2);
+
+        app(AutoAssign::class)->run();
+        Mail::assertSent(AdminAlertMail::class, 1);
+
+        $this->artisan('seating:check-auto-assign');
+        Mail::assertSent(AdminAlertMail::class, 1);
+    });
+
+    it('does not count a preview as a run', function () {
+        waitingOrder(2);
+
+        app(AutoAssign::class)->preview();
+        $this->artisan('seating:check-auto-assign');
+
+        Mail::assertSent(AdminAlertMail::class, 1);
+    });
+
+    it('stays quiet when nobody is waiting, without dates, and after the event', function () {
+        $this->artisan('seating:check-auto-assign');
+
+        waitingOrder(2);
+        config(['seating.selection_deadline' => null]);
+        $this->artisan('seating:check-auto-assign');
+
+        config(['seating.selection_deadline' => '2027-01-25 23:59']);
+        $this->travelTo('2027-02-02 12:00:00');
+        $this->artisan('seating:check-auto-assign');
+
+        Mail::assertNotSent(AdminAlertMail::class);
+    });
+
+    it('leaves out wheelchair orders', function () {
+        waitingOrder(2, ['needs_wheelchair' => true]);
+
+        $this->artisan('seating:check-auto-assign');
+
+        Mail::assertNotSent(AdminAlertMail::class);
+    });
+});
+
 describe('late orders', function () {
     it('seats an order arriving after the deadline right away', function () {
         app(OrderSync::class)->syncOrder(lateWebhookOrder());

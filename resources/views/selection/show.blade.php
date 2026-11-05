@@ -99,6 +99,27 @@
                         {{ $say('Platz speichern', 'Plätze speichern') }}
                     </button>
                 </section>
+
+                @if ($needed > 1)
+                    <details class="help-toggle">
+                        <summary>Findet ihr keine Plätze für eure Gruppe?</summary>
+                        <div class="help-toggle__body">
+                            <p>Wenn sich der Saal füllt, gibt es nicht mehr überall genug freie Plätze nebeneinander. Das passiert vor allem grösseren Gruppen.</p>
+                            <ul>
+                                <li>«Beste Plätze für uns finden» sucht die beste Aufteilung, die noch möglich ist.</li>
+                                <li>Ihr könnt euch auch aufteilen, zum Beispiel auf zwei Reihen hintereinander.</li>
+                            </ul>
+                            <p>
+                                Braucht ihr Hilfe?
+                                @if ($contact)
+                                    Schreibt uns an <a class="font-semibold text-accent underline" href="mailto:{{ $contact }}">{{ $contact }}</a>, dann suchen wir gemeinsam gute Plätze für euch.
+                                @else
+                                    Meldet euch bei uns, dann suchen wir gemeinsam gute Plätze für euch.
+                                @endif
+                            </p>
+                        </div>
+                    </details>
+                @endif
             </div>
         @else
             <div class="notice" role="status">

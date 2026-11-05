@@ -23,6 +23,8 @@ use Illuminate\Support\Facades\DB;
  */
 class AutoAssign
 {
+    public const LAST_RUN_KEY = 'seating.last-auto-assign';
+
     /** Another late order may take the suggested seats while we wait for the lock. */
     private const ATTEMPTS = 3;
 
@@ -40,6 +42,8 @@ class AutoAssign
      */
     public function run(): Collection
     {
+        Cache::forever(self::LAST_RUN_KEY, now()->toIso8601String());
+
         $mailed = 0;
         $results = $this->waitingOrders()->map(function (Order $order) use (&$mailed): AutoAssignment {
             $result = $this->assign($order, $mailed);
@@ -114,7 +118,7 @@ class AutoAssign
      *
      * @return Collection<int, Order>
      */
-    private function waitingOrders(): Collection
+    public function waitingOrders(): Collection
     {
         return Order::choosingForThemselves()
             ->missingSeats()
