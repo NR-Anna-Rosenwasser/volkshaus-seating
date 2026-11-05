@@ -34,3 +34,9 @@ docker compose exec app php artisan db:seed --force
 ```
 
 Migrations run when the `app` container starts.
+
+## Local Hi.Events
+
+For end-to-end tests, a local Hi.Events v2.0.0 runs next to this project in `../hievents-local`, on the
+same Docker network as DDEV. See the README there. It sends webhooks to
+`http://ddev-volkshaus-seating-web/webhooks/hievents`, and its mail lands in Mailpit.
