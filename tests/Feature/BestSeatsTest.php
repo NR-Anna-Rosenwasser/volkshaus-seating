@@ -10,9 +10,9 @@ beforeEach(function () {
     $this->seed(SeatSeeder::class);
 });
 
-function bestSeats(int $count, array $own = []): array
+function bestSeats(int $count, array $own = [], array $nearSeatIds = []): array
 {
-    return app(BestSeats::class)->find($count, $own);
+    return app(BestSeats::class)->find($count, $own, $nearSeatIds);
 }
 
 function fillSeats(iterable $ids): void
@@ -104,4 +104,37 @@ it('returns nothing when too few seats are free', function () {
     onlyFree(['P-1-1']);
 
     expect(bestSeats(2))->toBe([]);
+});
+
+it('does not strand a single seat when the group can sit at the end of a stretch', function () {
+    onlyFree(['P-5-5', 'P-5-6', 'P-5-7', 'P-5-8', 'P-5-9']);
+
+    $numbers = Seat::findMany(bestSeats(3))->pluck('number')->sort()->values()->all();
+
+    expect($numbers)->not->toBe([6, 7, 8]);
+});
+
+it('moves a row back rather than strand a seat', function () {
+    onlyFree(['P-5-5', 'P-5-6', 'P-5-7', 'P-6-5', 'P-6-6', 'P-6-7', 'P-6-8']);
+
+    // Three fills row 5 exactly. Two would strand its third seat, one row 6 does not.
+    expect(Seat::findMany(bestSeats(3))->pluck('row')->unique()->all())->toBe([5])
+        ->and(Seat::findMany(bestSeats(2))->pluck('row')->unique()->all())->toBe([6]);
+});
+
+it('prefers a clear seat over avoiding a stranded seat', function () {
+    $clear = Seat::where('section', 'parterre')->whereJsonDoesntContain('flags', 'obstructed')->where('row', 8)->orderBy('number')->limit(2)->pluck('id');
+    $obstructed = Seat::whereJsonContains('flags', 'obstructed')->limit(6)->pluck('id');
+    onlyFree([...$clear, ...$obstructed]);
+
+    expect($clear)->toContain(bestSeats(1)[0]);
+});
+
+it('stays close to seats the group already has', function () {
+    fillSeats(['P-12-7', 'P-12-8']);
+
+    $seats = bestSeats(1, nearSeatIds: ['P-12-7', 'P-12-8']);
+
+    expect(Seat::find($seats[0])->row)->toBe(12)
+        ->and($seats[0])->toBeIn(['P-12-6', 'P-12-9']);
 });

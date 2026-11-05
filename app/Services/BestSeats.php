@@ -22,15 +22,25 @@ class BestSeats
 
     private const SECTION_PENALTY = 5000;
 
+    /** Per seat: a seat with a restricted view loses to any clear seat. */
+    private const OBSTRUCTED_PENALTY = 2000;
+
+    /**
+     * Per seat of the group, for each lone seat left beside it. Worth about
+     * one to two rows: a hole is avoided by moving back a little, not far.
+     */
+    private const LONE_SEAT_PENALTY = 30;
+
     public function __construct(private readonly VenueLayout $layout) {}
 
     /**
      * @param  list<string>  $ownSeatIds  Seats that count as free for this group.
+     * @param  list<string>  $nearSeatIds  Seats to stay close to, such as the rest of the group.
      * @return list<string>
      */
-    public function find(int $count, array $ownSeatIds = []): array
+    public function find(int $count, array $ownSeatIds = [], array $nearSeatIds = []): array
     {
-        $seats = $this->freeSeats($ownSeatIds);
+        $seats = $this->freeSeats($ownSeatIds, $nearSeatIds);
 
         if ($count < 1 || $seats->count() < $count) {
             return [];
@@ -44,19 +54,21 @@ class BestSeats
 
     /**
      * @param  list<string>  $ownSeatIds
+     * @param  list<string>  $nearSeatIds
      * @return Collection<int, array<string, mixed>>
      */
-    private function freeSeats(array $ownSeatIds): Collection
+    private function freeSeats(array $ownSeatIds, array $nearSeatIds): Collection
     {
         $center = $this->layout->centerX();
         $order = array_flip(config('seating.section_preference'));
         $sideSections = $this->layout->verticalSections();
+        $near = Seat::findMany($nearSeatIds);
 
         return Seat::query()
             ->sellable()
             ->where(fn ($query) => $query->whereNull('attendee_id')->orWhereIn('id', $ownSeatIds))
             ->get()
-            ->map(function (Seat $seat) use ($center, $order, $sideSections): array {
+            ->map(function (Seat $seat) use ($center, $order, $sideSections, $near): array {
                 $side = in_array($seat->section, $sideSections, true);
 
                 return [
@@ -65,8 +77,10 @@ class BestSeats
                     'row' => $seat->row,
                     'number' => $seat->number,
                     'segment' => $seat->segment,
+                    'obstructed' => $seat->hasFlag('obstructed'),
                     // Obstructed seats come last everywhere. Side galleries run away from the stage.
                     'sort' => [
+                        $near->map(fn (Seat $other): int => $this->separation($seat, $other))->min() ?? 0,
                         $seat->hasFlag('obstructed') ? 1 : 0,
                         $order[$seat->section] ?? PHP_INT_MAX,
                         $side ? $seat->number : $seat->row,
@@ -78,6 +92,15 @@ class BestSeats
             ->sortBy(fn (array $seat): array => $seat['sort'])
             ->values()
             ->map(fn (array $seat, int $rank): array => [...$seat, 'rank' => $rank]);
+    }
+
+    private function separation(Seat $a, Seat $b): int
+    {
+        if ($a->section !== $b->section) {
+            return self::SECTION_PENALTY * 100;
+        }
+
+        return abs($a->row - $b->row) * 100 + abs($a->number - $b->number);
     }
 
     /**
@@ -115,7 +138,7 @@ class BestSeats
      * Every block of the given size, best first.
      *
      * @param  list<list<array<string, mixed>>>  $runs
-     * @return Collection<int, list<array<string, mixed>>>
+     * @return Collection<int, array{seats: list<array<string, mixed>>, cost: int}>
      */
     private function windows(array $runs, int $size): Collection
     {
@@ -123,12 +146,18 @@ class BestSeats
 
         foreach ($runs as $run) {
             for ($start = 0; $start + $size <= count($run); $start++) {
-                $windows[] = array_slice($run, $start, $size);
+                $seats = array_slice($run, $start, $size);
+                $loneSeats = ($start === 1 ? 1 : 0) + (count($run) - $start - $size === 1 ? 1 : 0);
+
+                $windows[] = [
+                    'seats' => $seats,
+                    'cost' => $this->cost($seats) + $loneSeats * $size * self::LONE_SEAT_PENALTY,
+                ];
             }
         }
 
         return collect($windows)
-            ->sortBy(fn (array $window): array => [$this->cost($window), $window[0]['id']])
+            ->sortBy(fn (array $window): array => [$window['cost'], $window['seats'][0]['id']])
             ->values();
     }
 
@@ -138,7 +167,7 @@ class BestSeats
      *
      * @param  list<list<array<string, mixed>>>  $runs
      * @param  Collection<int, array<string, mixed>>  $seats
-     * @return list<list<array<string, mixed>>>
+     * @return list<array{seats: list<array<string, mixed>>, cost: int}>
      */
     private function split(int $count, array $runs, Collection $seats): array
     {
@@ -155,13 +184,13 @@ class BestSeats
             }
         }
 
-        return $seats->take($count)->map(fn (array $seat): array => [$seat])->values()->all();
+        return $seats->take($count)->map(fn (array $seat): array => ['seats' => [$seat], 'cost' => 0])->values()->all();
     }
 
     /**
      * @param  list<int>  $parts
      * @param  list<list<array<string, mixed>>>  $runs
-     * @return array{windows: list<list<array<string, mixed>>>, cost: int}|null
+     * @return array{windows: list<array{seats: list<array<string, mixed>>, cost: int}>, cost: int}|null
      */
     private function place(array $parts, array $runs): ?array
     {
@@ -175,13 +204,13 @@ class BestSeats
 
         foreach ($bySize[$parts[0]]->take(self::SPLIT_ANCHORS) as $anchor) {
             $plan = [$anchor];
-            $cost = $this->cost($anchor);
-            $taken = array_column($anchor, 'id');
+            $cost = $anchor['cost'];
+            $taken = array_column($anchor['seats'], 'id');
 
             foreach (array_slice($parts, 1) as $size) {
                 $next = $bySize[$size]
-                    ->reject(fn (array $window): bool => array_intersect(array_column($window, 'id'), $taken) !== [])
-                    ->sortBy(fn (array $window): array => [$this->cost($window) + $this->distance($anchor[0], $window[0]), $window[0]['id']])
+                    ->reject(fn (array $window): bool => array_intersect(array_column($window['seats'], 'id'), $taken) !== [])
+                    ->sortBy(fn (array $window): array => [$window['cost'] + $this->distance($anchor['seats'][0], $window['seats'][0]), $window['seats'][0]['id']])
                     ->first();
 
                 if ($next === null) {
@@ -189,8 +218,8 @@ class BestSeats
                 }
 
                 $plan[] = $next;
-                $cost += $this->cost($next) + $this->distance($anchor[0], $next[0]);
-                $taken = [...$taken, ...array_column($next, 'id')];
+                $cost += $next['cost'] + $this->distance($anchor['seats'][0], $next['seats'][0]);
+                $taken = [...$taken, ...array_column($next['seats'], 'id')];
             }
 
             if ($best === null || $cost < $best['cost']) {
@@ -239,19 +268,20 @@ class BestSeats
     }
 
     /**
-     * @param  list<array<string, mixed>>  $window
+     * @param  list<array<string, mixed>>  $seats
      */
-    private function cost(array $window): int
+    private function cost(array $seats): int
     {
-        return array_sum(array_column($window, 'rank'));
+        return array_sum(array_column($seats, 'rank'))
+            + count(array_filter(array_column($seats, 'obstructed'))) * self::OBSTRUCTED_PENALTY;
     }
 
     /**
-     * @param  list<list<array<string, mixed>>>  $windows
+     * @param  list<array{seats: list<array<string, mixed>>, cost: int}>  $windows
      * @return list<string>
      */
     private function ids(array $windows): array
     {
-        return collect($windows)->flatten(1)->pluck('id')->all();
+        return collect($windows)->pluck('seats')->flatten(1)->pluck('id')->all();
     }
 }

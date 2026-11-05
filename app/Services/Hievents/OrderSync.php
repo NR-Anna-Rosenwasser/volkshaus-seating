@@ -15,6 +15,7 @@ use App\Models\MailLog;
 use App\Models\Order;
 use App\Models\Seat;
 use App\Services\AdminAlert;
+use App\Services\AutoAssign;
 use App\Services\BuyerMailer;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -35,6 +36,7 @@ class OrderSync
     public function __construct(
         private readonly AdminAlert $alert,
         private readonly BuyerMailer $mailer,
+        private readonly AutoAssign $autoAssign,
     ) {}
 
     /**
@@ -92,6 +94,12 @@ class OrderSync
 
         foreach ($this->notices as $notice) {
             $this->sendNotice($notice['order'], $notice['type']);
+        }
+
+        $order = Order::where('hievents_order_id', $hieventsOrderId)->first();
+
+        if ($order !== null) {
+            $this->autoAssign->seatIfLate($order);
         }
 
         return $result;

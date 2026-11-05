@@ -59,6 +59,14 @@ class Order extends Model
     }
 
     /**
+     * Orders with at least one seated ticket that has no seat yet.
+     */
+    public function scopeMissingSeats(Builder $query): void
+    {
+        $query->whereHas('attendees', fn (Builder $attendees) => $attendees->withoutSeat());
+    }
+
+    /**
      * Replaces the personal link, so older ones stop working.
      */
     public function issueToken(): string

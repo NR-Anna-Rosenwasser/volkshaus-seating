@@ -28,18 +28,24 @@ class BuyerMailer
     }
 
     /**
-     * Spreads mails out to stay under the provider's rate limit.
-     *
+     * Seconds to hold back the mail at this position of a batch, to stay
+     * under the provider's rate limit.
+     */
+    public function delayFor(int $position): int
+    {
+        return (int) floor($position / max(1, (int) config('seating.mail_per_second')));
+    }
+
+    /**
      * @param  iterable<Order>  $orders
      */
     public function sendBatch(iterable $orders, MailType $type, ?callable $afterEach = null): int
     {
-        $perSecond = max(1, (int) config('seating.mail_per_second'));
         $count = 0;
 
         foreach ($orders as $order) {
-            DB::transaction(function () use ($order, $type, $perSecond, $count, $afterEach): void {
-                $this->send($order, $type, (int) floor($count / $perSecond));
+            DB::transaction(function () use ($order, $type, $count, $afterEach): void {
+                $this->send($order, $type, $this->delayFor($count));
 
                 if ($afterEach !== null) {
                     $afterEach($order);
