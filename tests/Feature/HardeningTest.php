@@ -2,6 +2,7 @@
 
 use App\Console\Commands\BackupDatabase;
 use App\Enums\AssignedBy;
+use App\Enums\BlockReason;
 use App\Enums\MailType;
 use App\Http\Controllers\HealthController;
 use App\Jobs\RecordQueueHeartbeat;
@@ -13,8 +14,11 @@ use App\Models\Order;
 use App\Models\Seat;
 use App\Models\User;
 use App\Models\WebhookEvent;
+use App\Services\AutoAssign;
+use App\Services\BuyerMailer;
 use App\Services\Hievents\OrderSync;
 use App\Support\DataRetention;
+use App\Support\StatusLog;
 use Database\Seeders\SeatSeeder;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
@@ -25,6 +29,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Redis;
 
 beforeEach(function () {
     Mail::fake();
@@ -297,7 +302,7 @@ describe('backup', function () {
         expect($files)->toHaveCount(1)
             ->and(substr(File::get($files[0]), 0, 5))->toBe('PGDMP')
             ->and(File::glob("{$this->folder}/*.partial"))->toBe([])
-            ->and(Cache::get(BackupDatabase::LAST_BACKUP_KEY))->not->toBeNull();
+            ->and(StatusLog::get(BackupDatabase::LAST_BACKUP_KEY))->not->toBeNull();
     });
 
     it('removes dumps past their time and keeps the rest', function () {
@@ -326,7 +331,7 @@ describe('backup', function () {
 
         Mail::assertSent(AdminAlertMail::class, fn (AdminAlertMail $mail) => str_contains($mail->render(), 'Backup fehlgeschlagen'));
         expect(File::exists("{$this->folder}/seating-old.dump"))->toBeTrue()
-            ->and(Cache::get(BackupDatabase::LAST_BACKUP_KEY))->toBeNull();
+            ->and(StatusLog::get(BackupDatabase::LAST_BACKUP_KEY))->toBeNull();
     });
 
     it('keeps the password off the command line', function () {
@@ -355,4 +360,112 @@ it('keeps the audit trail through a late sale before the purge', function () {
     ]);
 
     expect(AuditLog::where('action', 'seat_auto_assigned')->count())->toBe(1);
+});
+
+describe('redis', function () {
+    beforeEach(function () {
+        config(['queue.default' => 'redis']);
+        Redis::connection()->flushdb();
+    });
+
+    afterEach(function () {
+        Redis::connection()->flushdb();
+    });
+
+    it('releases a job only when its transaction commits', function () {
+        $queue = Queue::connection('redis');
+
+        DB::transaction(function () use ($queue): void {
+            RecordQueueHeartbeat::dispatch();
+
+            expect($queue->size())->toBe(0);
+        });
+
+        expect($queue->size())->toBe(1);
+    });
+
+    it('sends no mail for a rolled-back change', function () {
+        // The fake records mails at the call, so only the real mailer shows what a rollback does.
+        Mail::swap($this->app->make('mail.manager'));
+        $order = personalOrder();
+        $queue = Queue::connection('redis');
+
+        try {
+            DB::transaction(function () use ($order): void {
+                app(BuyerMailer::class)->send($order, MailType::Confirmation);
+
+                throw new RuntimeException('rollback');
+            });
+        } catch (RuntimeException) {
+        }
+
+        expect($queue->size())->toBe(0)
+            ->and(MailLog::where('type', MailType::Confirmation)->count())->toBe(0);
+    });
+
+    it('clears queued jobs and job history in the purge', function () {
+        personalOrder();
+        Redis::connection()->set('horizon-job-history', 'rita@example.ch');
+        RecordQueueHeartbeat::dispatch();
+
+        $this->travelTo('2027-03-04 12:00:00');
+        $this->artisan('seating:purge')->assertSuccessful();
+
+        expect(Redis::connection()->dbsize())->toBe(0);
+    });
+});
+
+it('removes nothing and alerts if Redis is unreachable during the purge', function () {
+    $order = personalOrder();
+    config(['database.redis.default.host' => '127.0.0.1', 'database.redis.default.port' => 1, 'database.redis.default.max_retries' => 0]);
+    Redis::purge();
+
+    $this->travelTo('2027-03-04 12:00:00');
+    $this->artisan('seating:purge')->assertFailed();
+
+    expect($order->refresh()->email)->toBe('rita@example.ch');
+    Mail::assertSent(AdminAlertMail::class, fn (AdminAlertMail $mail) => str_contains($mail->render(), 'Anonymisierung fehlgeschlagen'));
+});
+
+describe('horizon', function () {
+    it('is closed to guests', function () {
+        $this->get('/horizon')->assertForbidden();
+        $this->getJson('/horizon/api/stats')->assertForbidden();
+        $this->getJson('/horizon/api/jobs/recent')->assertForbidden();
+    });
+
+    it('stays closed to guests on a server left in local mode', function () {
+        $this->app['env'] = 'local';
+
+        $this->get('/horizon')->assertForbidden();
+    });
+
+    it('is open to the admin', function () {
+        $this->actingAs(User::factory()->create())->get('/horizon')->assertOk();
+    });
+});
+
+it('keeps run status when the cache is lost', function () {
+    config(['seating.selection_deadline' => '2027-01-10 23:59']);
+    $order = Order::factory()->create();
+    Attendee::factory()->count(2)->for($order)->create();
+    MailLog::create(['order_id' => $order->id, 'type' => MailType::Link, 'sent_at' => now()]);
+    Seat::whereNull('block_reason')->update(['block_reason' => BlockReason::Other]);
+
+    app(AutoAssign::class)->run();
+    Cache::flush();
+    Mail::fake();
+
+    $this->artisan('seating:check-auto-assign')->assertSuccessful();
+
+    Mail::assertNotSent(AdminAlertMail::class);
+});
+
+it('promises the time the data really stays', function () {
+    $days = config('seating.purge_after_days') + config('seating.backup_keep_days');
+    $order = Order::factory()->create();
+    Attendee::factory()->for($order)->create();
+
+    expect($days)->toBeLessThanOrEqual(45);
+    $this->get('/s/'.$order->issueToken())->assertSeeText('spätestens 45 Tage nach der Veranstaltung');
 });

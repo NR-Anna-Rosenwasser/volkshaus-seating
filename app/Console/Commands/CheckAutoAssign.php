@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\AdminAlert;
 use App\Services\AutoAssign;
 use App\Support\SelectionWindow;
+use App\Support\StatusLog;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -28,7 +29,7 @@ class CheckAutoAssign extends Command
 
         if ($window->deadline()?->addHours(self::HOURS_AFTER_DEADLINE)->isFuture() !== false
             || $eventIsOver
-            || Cache::has(AutoAssign::LAST_RUN_KEY)) {
+            || StatusLog::get(AutoAssign::LAST_RUN_KEY) !== null) {
             return self::SUCCESS;
         }
 

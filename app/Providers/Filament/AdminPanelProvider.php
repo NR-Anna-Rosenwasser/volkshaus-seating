@@ -9,9 +9,11 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Icons\Heroicon;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -40,6 +42,12 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->font('Poppins', provider: LocalFontProvider::class)
             ->darkMode(false)
+            ->navigationItems([
+                NavigationItem::make('Warteschlange')
+                    ->url('/horizon', shouldOpenInNewTab: true)
+                    ->icon(Heroicon::OutlinedQueueList)
+                    ->sort(6),
+            ])
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => Blade::render("@fonts @vite(['resources/css/admin.css', 'resources/js/admin.js'])"))
             ->authenticatedRoutes(function (): void {
                 Route::get('exporte/{type}.{format}', ExportController::class)

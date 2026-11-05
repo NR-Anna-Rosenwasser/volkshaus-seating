@@ -82,9 +82,10 @@ found still gets in.
 |---|---|
 | The app is down on the night | Use the printed lists. Nothing about entry depends on this app. |
 | `/health` is `failed` | Look at which check failed, then `docker compose ps` and `docker compose up -d`. |
-| `queue: failed` | Mails aren't going out. `docker compose restart queue`. Nothing is lost, they send once it's back. |
+| `queue: failed` | Mails aren't going out. `docker compose restart horizon`, and `docker compose restart redis` if that doesn't help. Queued mails survive this. |
 | `scheduler: failed` | No links, reminders or backups. `docker compose restart scheduler`. |
-| «E-Mails schlagen fehl» alert | Check the mail provider. To see the failed jobs: `docker compose exec app php artisan queue:failed`. To resend them: `docker compose exec app php artisan queue:retry all`. |
+| «E-Mails schlagen fehl» alert | Check the mail provider. Failed jobs are in Warteschlange, under Failed Jobs, with a retry button. |
+| Redis is down | The plan, seat pages and admin keep working, and `/health` shows `failed`. Saving seats shows an error even though the seats were saved, and that confirmation is lost. `docker compose restart redis`, then run «Abgleich» so missed webhooks come back. Seats are safe, and buyers still see them on their page and in the final mail. |
 | «Abgleich fehlgeschlagen» alert | Hi.Events or the API key has a problem. Webhooks still work. Run «Abgleich» again later. |
 | Sales aren't showing up | Check «Letzter Webhook» on the Übersicht, then run «Abgleich mit Hi.Events». |
 | Red warning on the Übersicht | More tickets than seats. Lower the capacity in Hi.Events, then free blocked seats if you can. |

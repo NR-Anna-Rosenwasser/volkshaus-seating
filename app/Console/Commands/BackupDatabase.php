@@ -3,10 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Services\AdminAlert;
+use App\Support\StatusLog;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
@@ -49,7 +49,7 @@ class BackupDatabase extends Command
 
         // Renamed only when complete: a half-written file must never look like a backup.
         File::move($partial, $target);
-        Cache::forever(self::LAST_BACKUP_KEY, now()->toIso8601String());
+        StatusLog::put(self::LAST_BACKUP_KEY, now()->toIso8601String());
 
         $removed = $this->removeOldDumps($folder);
         $this->info("Backup written. {$removed} old dumps removed.");

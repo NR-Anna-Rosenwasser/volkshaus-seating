@@ -99,9 +99,10 @@ return [
 
         'failover' => [
             'driver' => 'failover',
+            // A Redis outage must not take the seating pages down with it.
             'stores' => [
+                'redis',
                 'database',
-                'array',
             ],
         ],
 

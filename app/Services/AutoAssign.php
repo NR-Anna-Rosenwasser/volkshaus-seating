@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Seat;
 use App\Support\AutoAssignment;
 use App\Support\SelectionWindow;
+use App\Support\StatusLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,7 @@ class AutoAssign
      */
     public function run(): Collection
     {
-        Cache::forever(self::LAST_RUN_KEY, now()->toIso8601String());
+        StatusLog::put(self::LAST_RUN_KEY, now()->toIso8601String());
 
         $mailed = 0;
         $results = $this->waitingOrders()->map(function (Order $order) use (&$mailed): AutoAssignment {

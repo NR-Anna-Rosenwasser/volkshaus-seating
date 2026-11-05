@@ -21,19 +21,24 @@ Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` before seeding. The admin panel
 
 Seeding needs the seat data at `database/data/volkshaus-theatersaal-seats.json`.
 
-Assets are not committed. After changing CSS or JS, run `ddev npm run build`.
+Assets are not committed. After changing CSS or JS, run `ddev npm run build`. Horizon keeps code in
+memory, so after changing jobs or mails run `ddev exec php artisan horizon:terminate`.
 
 ## Production
 
-Docker Compose runs `app`, `queue`, `scheduler` and `postgres`. The app listens on
+Docker Compose runs `app`, `horizon`, `scheduler`, `redis` and `postgres`. The app listens on
 `127.0.0.1:${APP_PORT}` for CloudPanel, which terminates TLS and proxies to it.
+
+Images are public on GHCR, at `ghcr.io/nr-anna-rosenwasser/volkshaus-seating`. The server only needs
+`docker-compose.yml` and `.env`, not the source code.
 
 ### First deploy
 
 ```sh
-cp .env.example .env          # fill in the values, then generate APP_KEY:
-docker compose run --rm --no-deps -e RUN_MIGRATIONS=false app php artisan key:generate --show
-docker compose up -d --build
+cp .env.example .env          # fill in the values, including APP_VERSION and REDIS_PASSWORD
+docker run --rm ghcr.io/nr-anna-rosenwasser/volkshaus-seating:$APP_VERSION php artisan key:generate --show
+docker compose pull
+docker compose up -d
 docker compose exec app php artisan db:seed --force
 ```
 
@@ -42,6 +47,22 @@ changing it run `docker compose up -d`.
 
 Back up `APP_KEY` somewhere safe. Personal links are derived from it and two-factor secrets are
 encrypted with it, so changing it breaks every link that has already gone out.
+
+### Releases
+
+Create a release with a tag like `v1.0.0`. [GitHub Actions](.github/workflows/release.yml) runs the
+tests and, only if they pass, publishes the image as `1.0.0` and `latest`. Then, on the server:
+
+```sh
+# set APP_VERSION=1.0.0 in .env
+docker compose pull
+docker compose up -d
+```
+
+To go back, set the old version and run the same commands. Migrations are not undone by this, so take
+a backup before a release that changes the database, and restore it if you have to go back past it.
+
+To build the image yourself instead, run `docker compose build`.
 
 ### Connecting Hi.Events
 
@@ -79,6 +100,9 @@ mail batch doesn't raise a false alarm.
 
 System alerts go to `ADMIN_EMAILS`.
 
+Horizon shows queued, finished and failed jobs at `/horizon`, linked as «Warteschlange» in the admin.
+It takes the admin login. Finished jobs stay visible for an hour and failed ones for a week.
+
 ### Backups
 
 `seating:backup` runs in the `scheduler` container and writes to the `backups` Docker volume. Dumps
@@ -101,18 +125,21 @@ docker compose exec scheduler sh -c 'PGPASSWORD="$DB_PASSWORD" pg_restore --clea
 docker compose start app queue
 ```
 
-Afterwards run `seating:reconcile`, so anything sold since the dump comes back.
+Afterwards run `seating:reconcile`, so anything sold since the dump comes back. Queued mails live in
+Redis, not in the dump, so a restore neither brings them back nor removes them.
 
 ### Personal data
 
-`seating:purge` runs by itself `PURGE_AFTER_DAYS` days after `EVENT_DATE`, which is what the selection
-page promises. It removes names, addresses, Hi.Events ids, wheelchair requests, webhook payloads,
-queued jobs and guest sessions, and keeps the counts. **This can't be undone**, so `ADMIN_EMAILS` gets
+`seating:purge` runs by itself `PURGE_AFTER_DAYS` days after `EVENT_DATE`. It removes names, addresses,
+Hi.Events ids, wheelchair requests, webhook payloads, queued jobs, everything Horizon stored and guest
+sessions, and keeps the counts. **This can't be undone**, so `ADMIN_EMAILS` gets
 a warning 7 days before. A wrong `EVENT_DATE` is the one thing to watch for.
 
 - From that date on, webhooks are ignored and reconcile stops, so nothing can copy names back.
 - `seating:purge --dry-run` shows the date and what would be removed.
 - Dumps from before the purge still hold personal data until they expire `BACKUP_KEEP_DAYS` days later.
+  That's why the selection page promises deletion within 45 days: 30 + 14, and these two have to stay below it.
+- If Redis is unreachable, nothing is removed, `ADMIN_EMAILS` is told, and the next night tries again.
 - Hi.Events keeps its own data. Delete it there separately.
 
 The audit log and `mail_log` hold no names, only ids that lead nowhere after the purge.

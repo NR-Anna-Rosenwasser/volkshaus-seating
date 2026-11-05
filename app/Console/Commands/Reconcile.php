@@ -8,10 +8,10 @@ use App\Services\AdminAlert;
 use App\Services\Hievents\HieventsClient;
 use App\Services\Hievents\OrderSync;
 use App\Support\DataRetention;
+use App\Support\StatusLog;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -33,7 +33,7 @@ class Reconcile extends Command
         try {
             $counts = $this->reconcile($client, $sync);
         } catch (Throwable $exception) {
-            Cache::forever(self::LAST_RESULT_KEY, ['at' => now()->toIso8601String(), 'failed' => true]);
+            StatusLog::put(self::LAST_RESULT_KEY, ['at' => now()->toIso8601String(), 'failed' => true]);
             Log::error("Reconciliation failed: {$exception->getMessage()}");
             $alert->send('Abgleich fehlgeschlagen', 'seating:reconcile konnte nicht abgeschlossen werden.');
             $this->error('Reconciliation failed.');
@@ -43,7 +43,7 @@ class Reconcile extends Command
 
         $summary = "created {$counts['created']}, updated {$counts['updated']}, cancelled {$counts['cancelled']}, unchanged {$counts['unchanged']}";
 
-        Cache::forever(self::LAST_RESULT_KEY, ['at' => now()->toIso8601String(), 'failed' => false, ...$counts]);
+        StatusLog::put(self::LAST_RESULT_KEY, ['at' => now()->toIso8601String(), 'failed' => false, ...$counts]);
         Log::info("Reconciliation: {$summary}");
         $this->info($summary);
 

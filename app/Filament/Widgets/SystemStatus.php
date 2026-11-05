@@ -6,10 +6,10 @@ use App\Console\Commands\BackupDatabase;
 use App\Console\Commands\Reconcile;
 use App\Models\WebhookEvent;
 use App\Services\AutoAssign;
+use App\Support\StatusLog;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 
 class SystemStatus extends StatsOverviewWidget
 {
@@ -24,7 +24,7 @@ class SystemStatus extends StatsOverviewWidget
 
     protected function getStats(): array
     {
-        $reconcile = Cache::get(Reconcile::LAST_RESULT_KEY);
+        $reconcile = StatusLog::get(Reconcile::LAST_RESULT_KEY);
         $failed = $reconcile['failed'] ?? false;
 
         return [
@@ -32,8 +32,8 @@ class SystemStatus extends StatsOverviewWidget
             Stat::make('Letzter Abgleich', $this->ago($reconcile['at'] ?? null))
                 ->description($failed ? 'Fehlgeschlagen' : ($reconcile ? 'Erfolgreich' : null))
                 ->color($failed ? 'danger' : 'gray'),
-            Stat::make('Letzte Auto-Zuteilung', $this->ago(Cache::get(AutoAssign::LAST_RUN_KEY))),
-            Stat::make('Letztes Backup', $this->ago(Cache::get(BackupDatabase::LAST_BACKUP_KEY))),
+            Stat::make('Letzte Auto-Zuteilung', $this->ago(StatusLog::get(AutoAssign::LAST_RUN_KEY))),
+            Stat::make('Letztes Backup', $this->ago(StatusLog::get(BackupDatabase::LAST_BACKUP_KEY))),
         ];
     }
 

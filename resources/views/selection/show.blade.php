@@ -157,7 +157,7 @@
         @endif
 
         <p class="text-xs leading-relaxed text-muted">
-            Wir verwenden {{ $say('deine', 'eure') }} Angaben nur für die Platzwahl und löschen sie 30 Tage nach der Veranstaltung.
+            Wir verwenden {{ $say('deine', 'eure') }} Angaben nur für die Platzwahl und löschen sie spätestens 45 Tage nach der Veranstaltung.
         </p>
     </div>
 </x-layouts.public>

@@ -6,6 +6,7 @@ use App\Models\Attendee;
 use App\Models\Order;
 use App\Models\WebhookEvent;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
 
 /**
  * Removes everything that points to a person and keeps the counts: how many
@@ -65,6 +66,10 @@ class PersonalDataPurge
             DB::table('jobs')->delete();
             DB::table('failed_jobs')->delete();
             DB::table('sessions')->whereNull('user_id')->delete();
+
+            // Queued mails and Horizon's job history hold addresses too. Last, so
+            // that a Redis failure rolls all of this back and the next run retries.
+            Redis::connection()->flushdb();
 
             return $counts;
         });

@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Console\Commands\Reconcile;
 use App\Services\AutoAssign;
 use App\Support\SelectionWindow;
+use App\Support\StatusLog;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Notifications\Notification;
@@ -12,7 +13,6 @@ use Filament\Pages\Dashboard as BaseDashboard;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
 
 class Dashboard extends BaseDashboard
 {
@@ -75,7 +75,7 @@ class Dashboard extends BaseDashboard
             ->modalSubmitActionLabel('Starten')
             ->action(function (): void {
                 Artisan::call('seating:reconcile');
-                $result = Cache::get(Reconcile::LAST_RESULT_KEY);
+                $result = StatusLog::get(Reconcile::LAST_RESULT_KEY);
 
                 Notification::make()
                     ->title($result['failed'] ?? true ? 'Abgleich fehlgeschlagen' : 'Abgleich abgeschlossen')

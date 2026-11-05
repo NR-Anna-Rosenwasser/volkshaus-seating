@@ -5,7 +5,7 @@ COPY resources ./resources
 RUN npm ci && npm run build
 
 FROM dunglas/frankenphp:1-php8.4-bookworm AS app
-RUN install-php-extensions bcmath exif gd intl opcache pcntl pdo_pgsql pgsql zip
+RUN install-php-extensions bcmath exif gd intl opcache pcntl pdo_pgsql pgsql redis zip
 # seating:backup needs pg_dump of the server's major version, which Debian doesn't ship.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends postgresql-common \
