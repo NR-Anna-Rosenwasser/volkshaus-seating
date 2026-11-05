@@ -95,9 +95,10 @@ it('gets a full house through the whole event', function () {
 
     $preview = app(AutoAssign::class)->preview()->map->seatIds->all();
 
-    $started = microtime(true);
+    // Monotonic: a laptop going to sleep mid-run must not count as slow code.
+    $started = hrtime(true);
     $results = app(AutoAssign::class)->run();
-    $seconds = microtime(true) - $started;
+    $seconds = (hrtime(true) - $started) / 1e9;
 
     expect($results->map->seatIds->all())->toBe($preview)
         ->and($seconds)->toBeLessThan(30);

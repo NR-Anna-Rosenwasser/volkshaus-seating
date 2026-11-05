@@ -40,8 +40,8 @@ docker compose exec app php artisan db:seed --force
 Migrations run when the `app` container starts. Containers read `.env` when they start, so after
 changing it run `docker compose up -d`.
 
-Back up `APP_KEY` somewhere safe. Personal links and two-factor secrets are derived from it, so
-changing it breaks every link that has already gone out.
+Back up `APP_KEY` somewhere safe. Personal links are derived from it and two-factor secrets are
+encrypted with it, so changing it breaks every link that has already gone out.
 
 ### Connecting Hi.Events
 
