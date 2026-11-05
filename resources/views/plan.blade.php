@@ -11,12 +11,12 @@
             sections: @js($plan['sections']),
             total: @js($plan['total']),
         })"
-        class="grid gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_auto_1fr]"
+        class="space-y-5"
     >
-        <header class="lg:col-start-2">
-            <p class="text-sm font-medium text-muted">Volkshaus Zürich · Theatersaal</p>
-            <h1 class="mt-1 text-3xl leading-tight font-semibold tracking-tight">Saalplan</h1>
-            <p class="mt-3 text-xl leading-snug font-medium tabular-nums">
+        <header>
+            <p class="inline-block rounded-full bg-tint px-3 py-1 text-xs font-medium text-ink">Volkshaus, Theatersaal</p>
+            <h1 class="mt-3 text-3xl leading-tight font-bold tracking-tight text-ink">Saalplan</h1>
+            <p class="mt-1 text-base leading-snug font-semibold text-ink tabular-nums">
                 Noch
                 <span x-text="swiss(total.free)">{{ $swiss($plan['total']['free']) }}</span>
                 von
@@ -26,7 +26,7 @@
         </header>
 
         <section
-            class="-mx-4 overflow-hidden border-y border-line bg-white sm:mx-0 sm:rounded-lg sm:border lg:col-start-1 lg:row-span-3 lg:row-start-1"
+            class="-mx-4 overflow-hidden border-y border-line sm:mx-0 sm:rounded-xl sm:border"
             aria-label="Saalplan"
         >
             {{-- Controls sit in their own strips so they never cover a seat. --}}
@@ -43,13 +43,13 @@
             <p
                 role="status"
                 class="flex min-h-14 items-center border-t border-line px-3 py-2 text-sm leading-snug"
-                x-bind:class="seat ? 'font-medium' : 'text-muted'"
+                x-bind:class="seat ? 'font-semibold text-ink' : 'text-muted'"
                 x-text="seat ?? (zoomed ? 'Tippt auf einen Platz für Details.' : 'Tippt auf einen Bereich, um ihn zu vergrössern.')"
             >Tippt auf einen Bereich, um ihn zu vergrössern.</p>
         </section>
 
-        <nav aria-label="Bereiche" class="lg:col-start-2">
-            <ul class="grid grid-cols-2 gap-2">
+        <nav aria-label="Bereiche">
+            <ul class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 @foreach ($sections as $section)
                     <li>
                         <button
@@ -58,7 +58,7 @@
                             x-bind:aria-current="section === @js($section['id']) ? 'true' : null"
                             x-on:click="showSection(@js($section['id']))"
                         >
-                            <span class="block text-sm font-medium">{{ $section['label'] }}</span>
+                            <span class="block text-sm font-semibold text-ink">{{ $section['label'] }}</span>
                             <span class="block text-sm text-muted tabular-nums">
                                 <span x-text="swiss(sections[@js($section['id'])]?.free ?? 0)">{{ $swiss($plan['sections'][$section['id']]['free'] ?? 0) }}</span>
                                 frei
@@ -69,7 +69,7 @@
             </ul>
         </nav>
 
-        <aside class="space-y-4 lg:col-start-2">
+        <aside class="space-y-4">
             <ul class="flex flex-wrap gap-x-4 gap-y-1.5 text-sm" aria-label="Legende">
                 <li class="flex items-center gap-1.5"><span class="legend-dot" data-state="free"></span>Frei</li>
                 <li class="flex items-center gap-1.5"><span class="legend-dot" data-state="taken"></span>Belegt</li>

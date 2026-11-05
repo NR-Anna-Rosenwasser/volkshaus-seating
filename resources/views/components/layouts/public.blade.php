@@ -9,9 +9,11 @@
         @fonts
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="min-h-svh bg-paper font-sans text-ink antialiased">
-        <main class="mx-auto max-w-6xl px-4 pt-6 pb-10 sm:px-6 sm:pt-10">
-            {{ $slot }}
+    <body class="min-h-svh bg-blush font-sans text-body antialiased">
+        <main class="mx-auto max-w-3xl px-2 py-2 sm:px-4 sm:py-6">
+            <div class="rounded-2xl bg-white px-4 py-6 shadow-sm sm:px-8 sm:py-8">
+                {{ $slot }}
+            </div>
         </main>
     </body>
 </html>
