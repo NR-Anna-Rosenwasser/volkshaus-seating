@@ -14,7 +14,8 @@ use App\Models\AuditLog;
 use App\Models\MailLog;
 use App\Models\Order;
 use App\Models\Seat;
-use App\Services\Ntfy;
+use App\Services\AdminAlert;
+use App\Services\BuyerMailer;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -28,10 +29,13 @@ use RuntimeException;
  */
 class OrderSync
 {
-    /** @var list<array{order: Order, type: MailType}> */
+    /** @var array<string, array{order: Order, type: MailType}> */
     private array $notices = [];
 
-    public function __construct(private readonly Ntfy $ntfy) {}
+    public function __construct(
+        private readonly AdminAlert $alert,
+        private readonly BuyerMailer $mailer,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $payload  An OrderResource.
@@ -177,6 +181,7 @@ class OrderSync
 
         if ($wasActive && $attendee->status === AttendeeStatus::Cancelled) {
             $this->releaseSeats(collect([$attendee->id]));
+            $this->notices[MailType::Confirmation->value] = ['order' => $order, 'type' => MailType::Confirmation];
         }
 
         return $changed;
@@ -237,20 +242,27 @@ class OrderSync
         }
 
         $order->update(['wheelchair_notified_at' => $wanted ? now() : null]);
-        $this->notices[] = [
-            'order' => $order,
-            'type' => $wanted ? MailType::WheelchairRequested : MailType::WheelchairCancelled,
-        ];
+        $type = $wanted ? MailType::WheelchairRequested : MailType::WheelchairCancelled;
+        $this->notices[$type->value] = ['order' => $order, 'type' => $type];
 
         return true;
     }
 
     private function sendNotice(Order $order, MailType $type): void
     {
+        if ($type === MailType::Confirmation) {
+            // Only if seats remain. Wheelchair orders hear from the organisers instead.
+            if ($order->status === OrderStatus::Active && ! $order->needs_wheelchair && $order->seats()->exists()) {
+                $this->mailer->send($order, $type);
+            }
+
+            return;
+        }
+
         $recipients = config('seating.wheelchair_notify_emails');
 
         if ($recipients === []) {
-            $this->ntfy->alert(
+            $this->alert->send(
                 'Rollstuhlplatz: keine Empfänger',
                 "Bestellung {$order->short_id}: WHEELCHAIR_NOTIFY_EMAILS ist leer.",
             );

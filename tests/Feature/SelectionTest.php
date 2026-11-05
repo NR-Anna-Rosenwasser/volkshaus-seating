@@ -46,6 +46,12 @@ it('stores only a hash of the token', function () {
         ->and(strlen($this->token))->toBe(43);
 });
 
+it('puts the same link into every mail', function () {
+    expect($this->order->selectionUrl())
+        ->toBe($this->order->refresh()->selectionUrl())
+        ->toEndWith("/s/{$this->token}");
+});
+
 it('shows a friendly page for an unknown link', function () {
     $this->get('/s/nonsense')->assertNotFound()->assertSeeText('Diese Seite gibt es nicht');
 });

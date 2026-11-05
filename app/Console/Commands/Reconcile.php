@@ -4,9 +4,9 @@ namespace App\Console\Commands;
 
 use App\Enums\SyncResult;
 use App\Models\Order;
+use App\Services\AdminAlert;
 use App\Services\Hievents\HieventsClient;
 use App\Services\Hievents\OrderSync;
-use App\Services\Ntfy;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -20,14 +20,14 @@ class Reconcile extends Command
 {
     public const LAST_RESULT_KEY = 'seating.last-reconciliation';
 
-    public function handle(HieventsClient $client, OrderSync $sync, Ntfy $ntfy): int
+    public function handle(HieventsClient $client, OrderSync $sync, AdminAlert $alert): int
     {
         try {
             $counts = $this->reconcile($client, $sync);
         } catch (Throwable $exception) {
             Cache::forever(self::LAST_RESULT_KEY, ['at' => now()->toIso8601String(), 'failed' => true]);
             Log::error("Reconciliation failed: {$exception->getMessage()}");
-            $ntfy->alert('Abgleich fehlgeschlagen', 'seating:reconcile konnte nicht abgeschlossen werden.');
+            $alert->send('Abgleich fehlgeschlagen', 'seating:reconcile konnte nicht abgeschlossen werden.');
             $this->error('Reconciliation failed.');
 
             return self::FAILURE;
@@ -40,7 +40,7 @@ class Reconcile extends Command
         $this->info($summary);
 
         if ($counts['created'] + $counts['updated'] + $counts['cancelled'] > 0) {
-            $ntfy->alert('Abgleich hat Abweichungen korrigiert', $summary);
+            $alert->send('Abgleich hat Abweichungen korrigiert', $summary);
         }
 
         return self::SUCCESS;

@@ -6,6 +6,8 @@ use App\Enums\BlockReason;
 use App\Enums\MailType;
 use App\Enums\OrderStatus;
 use App\Jobs\ProcessWebhookEvent;
+use App\Mail\AdminAlertMail;
+use App\Mail\SeatMail;
 use App\Mail\WheelchairNotice;
 use App\Models\Attendee;
 use App\Models\AuditLog;
@@ -15,7 +17,6 @@ use App\Models\Seat;
 use App\Models\WebhookEvent;
 use App\Services\Hievents\OrderSync;
 use Database\Seeders\SeatSeeder;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 
@@ -23,7 +24,6 @@ const WEBHOOK_SECRET = 'test-secret';
 
 beforeEach(function () {
     Mail::fake();
-    Http::fake(['ntfy.test/*' => Http::response()]);
 
     config([
         'seating.event_id' => '1',
@@ -33,7 +33,7 @@ beforeEach(function () {
         'seating.hievents.webhook_secret' => WEBHOOK_SECRET,
         'seating.hievents.base_url' => 'https://hi.test',
         'seating.hievents.api_key' => 'key',
-        'seating.ntfy' => ['url' => 'https://ntfy.test', 'topic' => 'seats'],
+        'seating.admin_emails' => ['admin@example.ch'],
     ]);
 
     $this->seed(SeatSeeder::class);
@@ -175,7 +175,7 @@ it('frees the seats of a cancelled order', function () {
         ->and(AuditLog::where('action', 'seat_released')->count())->toBe(2);
 });
 
-it('frees one seat when one attendee is cancelled', function () {
+it('frees one seat when one attendee is cancelled and confirms the rest', function () {
     sendWebhook('order.created', orderPayload());
     seatAttendee('1', 'P-1-1');
     seatAttendee('2', 'P-1-2');
@@ -185,6 +185,27 @@ it('frees one seat when one attendee is cancelled', function () {
     expect(Seat::find('P-1-1')->attendee_id)->toBeNull()
         ->and(Seat::find('P-1-2')->attendee_id)->not->toBeNull()
         ->and(Order::sole()->status)->toBe(OrderStatus::Active);
+
+    Mail::assertQueued(SeatMail::class, fn (SeatMail $mail) => $mail->type === MailType::Confirmation && $mail->hasTo('rita@example.ch'));
+});
+
+it('sends no confirmation when no seats remain', function () {
+    sendWebhook('order.created', orderPayload(['attendees' => [attendeePayload(1)]]));
+    seatAttendee('1', 'P-1-1');
+
+    sendWebhook('attendee.cancelled', attendeePayload(1, ['status' => 'CANCELLED']));
+
+    Mail::assertNotQueued(SeatMail::class);
+});
+
+it('sends wheelchair orders no confirmation', function () {
+    sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
+    seatAttendee('1', 'P-4-26');
+    seatAttendee('2', 'P-4-27');
+
+    sendWebhook('attendee.cancelled', attendeePayload(1, ['status' => 'CANCELLED']));
+
+    Mail::assertNotQueued(SeatMail::class);
 });
 
 it('tells every configured address about a wheelchair request, once', function () {
@@ -261,7 +282,7 @@ it('warns instead of losing a request when no recipient is configured', function
     sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
 
     Mail::assertNothingQueued();
-    Http::assertSent(fn (Request $request) => str_contains($request->url(), 'ntfy.test/seats'));
+    Mail::assertSent(AdminAlertMail::class);
 });
 
 it('refuses to sync without a product whitelist', function () {
@@ -281,7 +302,7 @@ it('records a failed delivery and alerts', function () {
     (new ProcessWebhookEvent($event->id))->failed(new RuntimeException('Kaputt'));
 
     expect($event->refresh()->error)->toBe('Kaputt');
-    Http::assertSent(fn (Request $request) => $request->header('Title') === ['Webhook fehlgeschlagen']);
+    Mail::assertSent(AdminAlertMail::class, fn (AdminAlertMail $mail) => $mail->title === 'Webhook fehlgeschlagen');
 });
 
 it('imports missed orders with their wheelchair answers', function () {
@@ -291,14 +312,13 @@ it('imports missed orders with their wheelchair answers', function () {
     Http::fake([
         'hi.test/api/events/1/orders/100' => Http::response(['data' => orderPayload(['question_answers' => [wheelchairAnswer()]])]),
         'hi.test/api/events/1/orders*' => Http::response(['data' => [$list], 'meta' => ['last_page' => 1]]),
-        'ntfy.test/*' => Http::response(),
     ]);
 
     $this->artisan('seating:reconcile')->expectsOutputToContain('created 1')->assertSuccessful();
 
     expect(Order::sole()->needs_wheelchair)->toBeTrue();
     Mail::assertQueuedCount(1);
-    Http::assertSent(fn (Request $request) => str_contains($request->url(), 'ntfy.test/seats'));
+    Mail::assertSent(AdminAlertMail::class);
 });
 
 it('fixes attendees whose changes sent no webhook', function () {
@@ -309,7 +329,6 @@ it('fixes attendees whose changes sent no webhook', function () {
 
     Http::fake([
         'hi.test/*' => Http::response(['data' => [$list], 'meta' => ['last_page' => 1]]),
-        'ntfy.test/*' => Http::response(),
     ]);
 
     $this->artisan('seating:reconcile')->expectsOutputToContain('updated 1')->assertSuccessful();
@@ -345,13 +364,11 @@ it('reads every page', function () {
 it('alerts and fails when the API is down', function () {
     Http::fake([
         'hi.test/*' => Http::response('nope', 500),
-        'ntfy.test/*' => Http::response(),
     ]);
 
     $this->artisan('seating:reconcile')->assertFailed();
 
-    Http::assertSent(fn (Request $request) => str_contains($request->url(), 'ntfy.test/seats')
-        && $request->header('Title') === ['Abgleich fehlgeschlagen']);
+    Mail::assertSent(AdminAlertMail::class, fn (AdminAlertMail $mail) => $mail->title === 'Abgleich fehlgeschlagen');
 });
 
 it('sends no alert when nothing changed', function () {
@@ -361,7 +378,7 @@ it('sends no alert when nothing changed', function () {
 
     $this->artisan('seating:reconcile')->assertSuccessful();
 
-    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'ntfy.test'));
+    Mail::assertNotSent(AdminAlertMail::class);
 });
 
 it('runs reconciliation every 30 minutes', function () {

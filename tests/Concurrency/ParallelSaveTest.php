@@ -2,6 +2,7 @@
 
 use App\Models\Attendee;
 use App\Models\AuditLog;
+use App\Models\MailLog;
 use App\Models\Order;
 use App\Models\Seat;
 use Database\Seeders\SeatSeeder;
@@ -17,6 +18,7 @@ beforeEach(function () {
 afterEach(function () {
     Seat::query()->update(['attendee_id' => null]);
     AuditLog::query()->delete();
+    MailLog::query()->delete();
     Attendee::query()->delete();
     Order::query()->delete();
     Seat::query()->delete();
@@ -27,7 +29,7 @@ function saveInParallel(array $requests): array
     $startAt = microtime(true) + 2;
 
     $processes = array_map(fn (array $request) => Process::path(base_path())
-        ->env(['APP_ENV' => 'testing', 'DB_DATABASE' => 'testing', 'CACHE_STORE' => 'array', 'DB_CONNECTION' => 'pgsql', 'DB_URL' => ''])
+        ->env(['APP_ENV' => 'testing', 'DB_DATABASE' => 'testing', 'CACHE_STORE' => 'array', 'DB_CONNECTION' => 'pgsql', 'DB_URL' => '', 'MAIL_MAILER' => 'array', 'QUEUE_CONNECTION' => 'sync'])
         ->start(['php', 'tests/Concurrency/save-seats.php', (string) $request['order'], (string) $startAt, implode(',', $request['seats'])]),
         $requests);
 

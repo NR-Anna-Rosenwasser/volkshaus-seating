@@ -1,5 +1,8 @@
-# Processes queued webhooks and mail while DDEV runs. queue:listen picks up code changes.
+# Queue and scheduler while DDEV runs. queue:listen picks up code changes.
 web_extra_daemons:
   - name: queue
     command: php artisan queue:listen --tries=3 --timeout=120
+    directory: /var/www/html
+  - name: scheduler
+    command: php artisan schedule:work
     directory: /var/www/html

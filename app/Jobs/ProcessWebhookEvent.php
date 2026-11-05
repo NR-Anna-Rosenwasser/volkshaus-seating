@@ -3,8 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\WebhookEvent;
+use App\Services\AdminAlert;
 use App\Services\Hievents\OrderSync;
-use App\Services\Ntfy;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -38,6 +38,6 @@ class ProcessWebhookEvent implements ShouldQueue
     {
         WebhookEvent::whereKey($this->webhookEventId)->update(['error' => $exception->getMessage()]);
 
-        app(Ntfy::class)->alert('Webhook fehlgeschlagen', "webhook_events #{$this->webhookEventId} konnte nicht verarbeitet werden.");
+        app(AdminAlert::class)->send('Webhook fehlgeschlagen', "webhook_events #{$this->webhookEventId} konnte nicht verarbeitet werden.");
     }
 }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AssignedBy;
 use App\Enums\AttendeeStatus;
 use App\Enums\AuditActor;
+use App\Enums\MailType;
 use App\Enums\OrderStatus;
 use App\Exceptions\SeatConflict;
 use App\Models\Attendee;
@@ -24,7 +25,10 @@ class SeatSelection
 {
     public const SINGLE_GAP_MESSAGE = 'Zwischen euren Plätzen bleibt ein einzelner Platz frei. Bitte rückt zusammen.';
 
-    public function __construct(private readonly SelectionWindow $window) {}
+    public function __construct(
+        private readonly SelectionWindow $window,
+        private readonly BuyerMailer $mailer,
+    ) {}
 
     /**
      * Wheelchair orders are arranged by hand and never choose for themselves.
@@ -79,6 +83,8 @@ class SeatSelection
 
             $order->update(['seats_confirmed_at' => now()]);
         });
+
+        $this->mailer->send($order, MailType::Confirmation);
     }
 
     /**

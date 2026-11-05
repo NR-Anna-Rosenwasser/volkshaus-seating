@@ -7,6 +7,7 @@ use App\Enums\OrderStatus;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\DB;
     'hievents_order_id', 'hievents_public_id', 'short_id',
     'email', 'first_name', 'last_name', 'locale', 'status',
     'token_hash', 'seats_confirmed_at', 'reminders_sent', 'last_reminder_at',
-    'needs_wheelchair', 'wheelchair_notified_at', 'created_at',
+    'token_version', 'needs_wheelchair', 'wheelchair_notified_at', 'created_at',
 ])]
 #[Hidden(['token_hash'])]
 class Order extends Model
@@ -34,6 +35,7 @@ class Order extends Model
             'seats_confirmed_at' => 'datetime',
             'last_reminder_at' => 'datetime',
             'needs_wheelchair' => 'boolean',
+            'token_version' => 'integer',
             'wheelchair_notified_at' => 'datetime',
             'reminders_sent' => 'integer',
         ];
@@ -49,14 +51,42 @@ class Order extends Model
     }
 
     /**
-     * Replaces the personal link, so an older one stops working. Only the
-     * hash is stored: the returned token cannot be recovered later.
+     * Orders that pick their own seats. Wheelchair orders are arranged by hand.
+     */
+    public function scopeChoosingForThemselves(Builder $query): void
+    {
+        $query->where('status', OrderStatus::Active)->where('needs_wheelchair', false);
+    }
+
+    /**
+     * Replaces the personal link, so older ones stop working.
      */
     public function issueToken(): string
     {
-        $token = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+        $this->update(['token_version' => $this->token_version + 1]);
 
-        $this->update(['token_hash' => hash('sha256', $token)]);
+        return $this->currentToken();
+    }
+
+    public function selectionUrl(): string
+    {
+        return route('selection.show', $this->currentToken());
+    }
+
+    /**
+     * Derived, not random: several mails carry the same link, yet only its
+     * hash is stored. Changing APP_KEY invalidates every link.
+     */
+    private function currentToken(): string
+    {
+        $key = (string) config('app.key');
+        $mac = hash_hmac('sha256', "selection-link|{$this->id}|{$this->token_version}", $key, true);
+        $token = rtrim(strtr(base64_encode($mac), '+/', '-_'), '=');
+        $hash = hash('sha256', $token);
+
+        if ($this->token_hash !== $hash) {
+            $this->update(['token_hash' => $hash]);
+        }
 
         return $token;
     }

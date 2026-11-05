@@ -29,10 +29,8 @@ return [
     'mail_per_second' => (int) env('MAIL_PER_SECOND', 5),
     'contact_email' => env('CONTACT_EMAIL'),
 
-    'ntfy' => [
-        'url' => env('NTFY_URL'),
-        'topic' => env('NTFY_TOPIC'),
-    ],
+    'admin_emails' => $ids('ADMIN_EMAILS'),
+    'mail_failure_threshold' => (int) env('MAIL_FAILURE_THRESHOLD', 5),
 
     'admin' => [
         'name' => env('ADMIN_NAME', 'Admin'),
