@@ -99,6 +99,15 @@ class Order extends Model
             ->count();
     }
 
+    /**
+     * Wording for buyers. An order with one seated ticket is one person, so
+     * it gets «du», everything else «ihr».
+     */
+    public function say(string $solo, string $group): string
+    {
+        return $this->seatsNeeded() === 1 ? $solo : $group;
+    }
+
     public function attendees(): HasMany
     {
         return $this->hasMany(Attendee::class);

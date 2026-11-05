@@ -12,7 +12,7 @@
         </header>
 
         @if ($seats->isEmpty())
-            <p class="notice">Ihr habt noch keine Plätze.</p>
+            <p class="notice">{{ $order->say('Du hast noch keinen Platz.', 'Ihr habt noch keine Plätze.') }}</p>
         @else
             <ul class="space-y-2">
                 @foreach ($seats as $seat)
@@ -27,7 +27,7 @@
             </div>
         @endif
 
-        <p class="notice">Einlass nur mit dem Ticket von Hi.Events. Diese Seite zeigt nur euren Sitzplatz.</p>
+        <p class="notice">Einlass nur mit dem Ticket von Hi.Events. Diese Seite zeigt nur {{ $order->say('deinen', 'euren') }} Sitzplatz.</p>
 
         <button type="button" class="secondary-button no-print w-full" onclick="window.print()">Drucken</button>
     </div>

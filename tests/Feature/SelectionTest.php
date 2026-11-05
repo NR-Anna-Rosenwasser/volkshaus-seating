@@ -52,6 +52,34 @@ it('puts the same link into every mail', function () {
         ->toEndWith("/s/{$this->token}");
 });
 
+it('addresses a single ticket as du on the seat pages', function () {
+    $order = Order::factory()->create();
+    Attendee::factory()->for($order)->create();
+    $token = $order->issueToken();
+
+    $this->get("/s/{$token}")
+        ->assertOk()
+        ->assertSeeText('Dein Platz')
+        ->assertSeeText('Wähle einen Platz. Du kannst deine Wahl bis')
+        ->assertSeeText('Besten Platz für mich finden')
+        ->assertSeeText('Platz speichern')
+        ->assertSeeText('Deine Wahl')
+        ->assertDontSeeText('Eure')
+        ->assertDontSeeText('eure')
+        ->assertDontSeeText('Ihr ');
+
+    $this->get("/s/{$token}/ticket")
+        ->assertSeeText('Du hast noch keinen Platz.')
+        ->assertSeeText('Diese Seite zeigt nur deinen Sitzplatz.');
+});
+
+it('keeps groups on ihr on the seat pages', function () {
+    $this->get("/s/{$this->token}")
+        ->assertSeeText('Eure Plätze')
+        ->assertSeeText('Wählt 2 Plätze. Ihr könnt eure Wahl bis')
+        ->assertSeeText('Eure Wahl');
+});
+
 it('shows a friendly page for an unknown link', function () {
     $this->get('/s/nonsense')->assertNotFound()->assertSeeText('Diese Seite gibt es nicht');
 });

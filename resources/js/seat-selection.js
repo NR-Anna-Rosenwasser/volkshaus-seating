@@ -8,6 +8,7 @@ const REFRESH_MS = 10_000;
  */
 export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sections, total }) => {
     const map = seatMap({ url, refreshMs: REFRESH_MS, sections, total });
+    const say = (solo, group) => (needed === 1 ? solo : group);
 
     return {
         ...map,
@@ -24,7 +25,9 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
         },
 
         hint() {
-            return this.zoomed ? 'Tippt auf einen Platz, um ihn zu wählen.' : 'Tippt auf einen Bereich, um ihn zu vergrössern.';
+            const verb = say('Tippe', 'Tippt');
+
+            return this.zoomed ? `${verb} auf einen Platz, um ihn zu wählen.` : `${verb} auf einen Bereich, um ihn zu vergrössern.`;
         },
 
         paint() {
@@ -126,7 +129,7 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
 
         dropLost(seats) {
             this.selected = this.selected.filter((id) => !seats.includes(id));
-            this.notice = 'Diese Plätze wurden gerade vergeben. Bitte wählt andere.';
+            this.notice = say('Dieser Platz wurde gerade vergeben. Bitte wähle einen anderen.', 'Diese Plätze wurden gerade vergeben. Bitte wählt andere.');
             this.saved = false;
             this.paint();
         },
@@ -150,7 +153,7 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 const { seats } = await response.json();
 
                 if (seats.length < this.needed) {
-                    this.notice = 'Es sind nicht mehr genug Plätze frei.';
+                    this.notice = say('Es ist kein Platz mehr frei.', 'Es sind nicht mehr genug Plätze frei.');
 
                     return;
                 }
@@ -163,7 +166,7 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                     this.notice = 'Für eure Gruppe gibt es keine Plätze mehr am Stück. Das ist die beste Aufteilung.';
                 }
             } catch {
-                this.notice = 'Das hat nicht geklappt. Bitte versucht es noch einmal.';
+                this.notice = say('Das hat nicht geklappt. Bitte versuche es noch einmal.', 'Das hat nicht geklappt. Bitte versucht es noch einmal.');
             } finally {
                 this.busy = false;
             }
@@ -192,10 +195,10 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 } else {
                     const body = await response.json().catch(() => ({}));
 
-                    this.notice = body.errors?.seats?.[0] ?? 'Das Speichern hat nicht geklappt. Bitte versucht es noch einmal.';
+                    this.notice = body.errors?.seats?.[0] ?? say('Das Speichern hat nicht geklappt. Bitte versuche es noch einmal.', 'Das Speichern hat nicht geklappt. Bitte versucht es noch einmal.');
                 }
             } catch {
-                this.notice = 'Das Speichern hat nicht geklappt. Bitte prüft eure Verbindung.';
+                this.notice = say('Das Speichern hat nicht geklappt. Bitte prüfe deine Verbindung.', 'Das Speichern hat nicht geklappt. Bitte prüft eure Verbindung.');
             } finally {
                 this.busy = false;
             }
