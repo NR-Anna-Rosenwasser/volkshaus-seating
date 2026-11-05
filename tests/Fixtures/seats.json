@@ -1,0 +1,14 @@
+{
+  "coordinate_system": { "unit": "pt", "width": 595.28, "height": 841.89, "seat_radius": 5.2 },
+  "stage": { "x0": 157, "y0": 42, "x1": 444, "y1": 113 },
+  "sections": [{ "id": "parterre", "label": "Parterre" }],
+  "pillars": [],
+  "seats": [
+    { "id": "P-1-1", "section": "parterre", "row": 1, "number": 1, "x": 100.5, "y": 150.25, "segment": 1, "flags": [] },
+    { "id": "P-1-2", "section": "parterre", "row": 1, "number": 2, "x": 110.5, "y": 150.25, "segment": 1 },
+    { "id": "P-4-26", "section": "parterre", "row": 4, "number": 26, "x": 427.1, "y": 185.6, "segment": 1, "flags": ["wheelchair"] },
+    { "id": "P-23-10", "section": "parterre", "row": 23, "number": 10, "x": 300, "y": 500, "segment": 1, "flags": ["foh_var1", "foh_var2"] },
+    { "id": "P-23-9", "section": "parterre", "row": 23, "number": 9, "x": 290, "y": 500, "segment": 1, "flags": ["foh_var1"] },
+    { "id": "GL-1-1", "section": "galerie_links", "row": 1, "number": 1, "x": 40, "y": 300, "segment": 2, "flags": ["obstructed"] }
+  ]
+}
