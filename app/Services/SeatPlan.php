@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Enums\SeatState;
-use App\Models\Seat;
+use App\Models\Event;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -14,8 +14,6 @@ class SeatPlan
 {
     public const CACHE_SECONDS = 30;
 
-    private const CACHE_KEY = 'seating.public-plan';
-
     /**
      * @return array{
      *     seats: array<string, string>,
@@ -23,9 +21,14 @@ class SeatPlan
      *     total: array{free: int, sellable: int}
      * }
      */
-    public function snapshot(): array
+    public function snapshot(Event $event): array
     {
-        return Cache::remember(self::CACHE_KEY, self::CACHE_SECONDS, $this->fresh(...));
+        return Cache::remember(self::cacheKey($event), self::CACHE_SECONDS, fn (): array => $this->fresh($event));
+    }
+
+    public static function cacheKey(Event $event): string
+    {
+        return "seating.public-plan.{$event->id}";
     }
 
     /**
@@ -35,13 +38,13 @@ class SeatPlan
      *     total: array{free: int, sellable: int}
      * }
      */
-    public function fresh(): array
+    public function fresh(Event $event): array
     {
         $plan = ['seats' => [], 'sections' => [], 'total' => ['free' => 0, 'sellable' => 0]];
 
-        foreach (Seat::query()->get(['id', 'section', 'block_reason', 'attendee_id']) as $seat) {
+        foreach ($event->seats()->get(['code', 'section', 'block_reason', 'attendee_id']) as $seat) {
             $state = $seat->state();
-            $plan['seats'][$seat->id] = $state->value;
+            $plan['seats'][$seat->code] = $state->value;
             $plan['sections'][$seat->section] ??= ['free' => 0, 'sellable' => 0];
 
             if ($state === SeatState::Blocked) {

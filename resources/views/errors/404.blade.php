@@ -4,6 +4,6 @@
         <p class="leading-relaxed">
             Vielleicht ist der Link nicht mehr gültig. Nehmt bitte den Link aus unserer neuesten E-Mail.
         </p>
-        <a class="font-semibold text-accent underline" href="{{ route('plan') }}">Zum Saalplan</a>
+        <a class="font-semibold text-accent underline" href="{{ route('home') }}">Zur Startseite</a>
     </div>
 </x-layouts.public>

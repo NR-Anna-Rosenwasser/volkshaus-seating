@@ -8,28 +8,28 @@ use App\Mail\SeatMail;
 use App\Models\Attendee;
 use App\Models\MailLog;
 use App\Models\Order;
-use App\Models\Seat;
 use App\Services\AdminAlert;
 use App\Services\BuyerMailer;
 use App\Services\SeatSelection;
-use Database\Seeders\SeatSeeder;
 use Illuminate\Support\Facades\Mail;
 
 beforeEach(function () {
     Mail::fake();
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
 
     $this->travelTo('2027-01-01 12:00:00');
 
+    setEvent([
+        'name' => 'Hässig am Mittwoch',
+        'starts_at' => '2027-02-01 20:00',
+        'doors_at' => '2027-02-01 19:00',
+        'selection_opens_at' => '2026-12-20 10:00',
+        'selection_deadline' => '2027-01-25 23:59',
+        'reminder_offsets_days' => [14, 7, 2],
+        'contact_email' => 'hallo@example.ch',
+    ]);
     config([
-        'seating.event_name' => 'Hässig am Mittwoch',
-        'seating.event_date' => '2027-02-01 20:00',
-        'seating.doors_at' => '2027-02-01 19:00',
-        'seating.selection_opens_at' => '2026-12-20 10:00',
-        'seating.selection_deadline' => '2027-01-25 23:59',
-        'seating.reminder_offsets_days' => [14, 7, 2],
         'seating.final_mail_offset_days' => 2,
-        'seating.contact_email' => 'hallo@example.ch',
         'seating.mail_per_second' => 5,
         'seating.admin_emails' => ['admin@example.ch'],
         'seating.mail_failure_threshold' => 3,
@@ -48,7 +48,7 @@ function seated(Order $order, string ...$seatIds): void
 {
     foreach ($order->attendees as $index => $attendee) {
         if (isset($seatIds[$index])) {
-            Seat::find($seatIds[$index])->update(['attendee_id' => $attendee->id]);
+            seat($seatIds[$index])->update(['attendee_id' => $attendee->id]);
         }
     }
 }
@@ -145,7 +145,7 @@ it('contains the link, seat count, deadline and plan', function () {
         ->toContain($order->selectionUrl())
         ->toContain('Ihr braucht 2 Plätze')
         ->toContain('Montag, 25. Januar 2027, 23:59 Uhr')
-        ->toContain(route('plan'));
+        ->toContain(route('plan', seatedEvent()));
 });
 
 it('has an HTML and a text version of every mail', function (MailType $type) {
@@ -344,7 +344,7 @@ it('includes wheelchair orders in the final mail once they have seats', function
     seated($order, 'P-1-1');
     buyer(1, ['needs_wheelchair' => true]);
 
-    $this->artisan('seating:send-final', ['--now' => true])->assertSuccessful();
+    $this->artisan('seating:send-final', ['--event' => 'test', '--now' => true])->assertSuccessful();
 
     expect(queuedOf(MailType::Final))->toBe(1);
 });
@@ -353,7 +353,7 @@ it('skips cancelled orders in the final mail', function () {
     $order = buyer(1, ['status' => OrderStatus::Cancelled]);
     seated($order, 'P-1-1');
 
-    $this->artisan('seating:send-final', ['--now' => true])->assertSuccessful();
+    $this->artisan('seating:send-final', ['--event' => 'test', '--now' => true])->assertSuccessful();
 
     Mail::assertNothingQueued();
 });
@@ -363,7 +363,7 @@ it('sends no mail after the event', function () {
     seated($order, 'P-1-1', 'P-1-2');
     $this->travelTo('2027-02-02 12:00:00');
 
-    $this->artisan('seating:send-final', ['--now' => true])->assertSuccessful();
+    $this->artisan('seating:send-final', ['--event' => 'test', '--now' => true])->assertSuccessful();
 
     Mail::assertNothingQueued();
 });

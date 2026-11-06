@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\BlockReason;
+use App\Models\Event;
 use App\Models\Seat;
 use InvalidArgumentException;
 
@@ -19,19 +20,22 @@ class SeatImporter
     private const REQUIRED_FIELDS = ['id', 'section', 'row', 'number', 'segment', 'x', 'y'];
 
     /**
-     * Upsert the seats in the given JSON file and return how many it holds.
+     * Gives the event the plan in the JSON file and returns how many seats it holds.
      *
      * Default blocks are written only when a seat is first inserted, so importing
      * again never undoes an admin's blocks or releases, or touches assignments.
      */
-    public function import(string $path): int
+    public function import(Event $event, string $path): int
     {
-        $seats = $this->read($path);
+        $layout = $this->read($path);
+        $seats = $layout['seats'];
+
+        $event->update(['layout' => $layout]);
 
         foreach (array_chunk($seats, 200) as $chunk) {
             Seat::query()->upsert(
-                array_map($this->toRow(...), $chunk),
-                ['id'],
+                array_map(fn (array $seat): array => $this->toRow($event, $seat), $chunk),
+                ['event_id', 'code'],
                 ['section', 'row', 'number', 'segment', 'x', 'y', 'flags'],
             );
         }
@@ -40,7 +44,7 @@ class SeatImporter
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return array<string, mixed>
      */
     private function read(string $path): array
     {
@@ -48,7 +52,8 @@ class SeatImporter
             throw new InvalidArgumentException("Seat data file not found: {$path}");
         }
 
-        $seats = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR)['seats'] ?? null;
+        $layout = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $seats = $layout['seats'] ?? null;
 
         if (! is_array($seats) || $seats === []) {
             throw new InvalidArgumentException("Seat data file has no seats: {$path}");
@@ -69,19 +74,20 @@ class SeatImporter
             throw new InvalidArgumentException('Duplicate seat ids: '.implode(', ', $duplicates));
         }
 
-        return $seats;
+        return $layout;
     }
 
     /**
      * @param  array<string, mixed>  $seat
      * @return array<string, mixed>
      */
-    private function toRow(array $seat): array
+    private function toRow(Event $event, array $seat): array
     {
         $flags = $seat['flags'] ?? [];
 
         return [
-            'id' => $seat['id'],
+            'event_id' => $event->id,
+            'code' => $seat['id'],
             'section' => $seat['section'],
             'row' => $seat['row'],
             'number' => $seat['number'],

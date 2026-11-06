@@ -10,6 +10,7 @@ use App\Enums\MailType;
 use App\Exceptions\SeatConflict;
 use App\Models\Attendee;
 use App\Models\AuditLog;
+use App\Models\Event;
 use App\Models\Order;
 use App\Models\Seat;
 use Illuminate\Support\Collection;
@@ -29,30 +30,30 @@ class AdminSeats
     public function __construct(private readonly BuyerMailer $mailer) {}
 
     /**
-     * @param  list<string>  $seatIds
+     * @param  list<string>  $seatIds  Seat codes.
      * @return array{changed: int, skipped: list<string>}
      */
-    public function block(array $seatIds, BlockReason $reason, ?string $note): array
+    public function block(Event $event, array $seatIds, BlockReason $reason, ?string $note): array
     {
-        return DB::transaction(function () use ($seatIds, $reason, $note): array {
-            [$assigned, $seats] = $this->lockSeats($seatIds)->partition(fn (Seat $seat): bool => $seat->attendee_id !== null);
+        return DB::transaction(function () use ($event, $seatIds, $reason, $note): array {
+            [$assigned, $seats] = $this->lockSeats($event, $seatIds)->partition(fn (Seat $seat): bool => $seat->attendee_id !== null);
 
             foreach ($seats as $seat) {
                 $this->audit('seat_blocked', $seat, $seat->attendee_id, ['block_reason' => $seat->block_reason?->value], ['block_reason' => $reason->value]);
                 $seat->update(['block_reason' => $reason, 'block_note' => $note ?: null]);
             }
 
-            return ['changed' => $seats->count(), 'skipped' => $assigned->pluck('id')->all()];
+            return ['changed' => $seats->count(), 'skipped' => $assigned->pluck('code')->all()];
         });
     }
 
     /**
-     * @param  list<string>  $seatIds
+     * @param  list<string>  $seatIds  Seat codes.
      */
-    public function unblock(array $seatIds): int
+    public function unblock(Event $event, array $seatIds): int
     {
-        return DB::transaction(function () use ($seatIds): int {
-            $seats = $this->lockSeats($seatIds)->filter(fn (Seat $seat): bool => $seat->block_reason !== null);
+        return DB::transaction(function () use ($event, $seatIds): int {
+            $seats = $this->lockSeats($event, $seatIds)->filter(fn (Seat $seat): bool => $seat->block_reason !== null);
 
             foreach ($seats as $seat) {
                 $this->audit('seat_unblocked', $seat, null, ['block_reason' => $seat->block_reason->value]);
@@ -69,15 +70,15 @@ class AdminSeats
      * @throws SeatConflict
      * @throws ValidationException
      */
-    public function move(string $fromSeatId, string $toSeatId): Order
+    public function move(Event $event, string $fromSeatId, string $toSeatId): Order
     {
-        $attendee = Seat::findOrFail($fromSeatId)->attendee ?? throw ValidationException::withMessages(['seat' => 'Dieser Platz ist nicht belegt.']);
+        $attendee = $event->seats()->where('code', $fromSeatId)->firstOrFail()->attendee ?? throw ValidationException::withMessages(['seat' => 'Dieser Platz ist nicht belegt.']);
         $order = $attendee->order;
 
-        DB::transaction(function () use ($order, $attendee, $fromSeatId, $toSeatId): void {
-            Order::lockByHieventsId($order->hievents_order_id);
+        DB::transaction(function () use ($event, $order, $attendee, $fromSeatId, $toSeatId): void {
+            $order->lock();
 
-            $seats = $this->lockSeats([$fromSeatId, $toSeatId])->keyBy('id');
+            $seats = $this->lockSeats($event, [$fromSeatId, $toSeatId])->keyBy('code');
             $from = $seats[$fromSeatId];
             $to = $seats[$toSeatId] ?? throw ValidationException::withMessages(['seat' => 'Diesen Platz gibt es nicht.']);
 
@@ -89,7 +90,7 @@ class AdminSeats
 
             $from->update($from->vacantAttributes());
             $this->take($to, $attendee->id);
-            $this->audit('seat_moved', $to, $attendee->id, ['seat_id' => $from->id]);
+            $this->audit('seat_moved', $to, $attendee->id, ['seat_id' => $from->code]);
         });
 
         $this->confirm($order);
@@ -101,7 +102,7 @@ class AdminSeats
      * Makes these exactly the order's seats. May be fewer than it needs, so
      * a group can be seated step by step.
      *
-     * @param  list<string>  $seatIds
+     * @param  list<string>  $seatIds  Seat codes.
      *
      * @throws SeatConflict
      * @throws ValidationException
@@ -109,7 +110,7 @@ class AdminSeats
     public function assign(Order $order, array $seatIds): void
     {
         DB::transaction(function () use ($order, $seatIds): void {
-            Order::lockByHieventsId($order->hievents_order_id);
+            $order->lock();
 
             $attendees = $order->attendees()
                 ->where('status', AttendeeStatus::Active)
@@ -121,14 +122,16 @@ class AdminSeats
                 throw ValidationException::withMessages(['seats' => "Diese Bestellung braucht nur {$attendees->count()} Plätze."]);
             }
 
-            $seats = Seat::query()
+            $seats = $order->event->seats()
                 ->where(fn ($query) => $query
-                    ->whereKey($seatIds)
+                    ->whereIn('code', $seatIds)
                     ->orWhereIn('attendee_id', $order->attendees()->select('attendees.id')))
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
-                ->keyBy('id');
+                ->keyBy('code')
+                // Eloquent collections look up only() by primary key, not by these codes.
+                ->toBase();
 
             if (array_diff($seatIds, $seats->keys()->all()) !== []) {
                 throw ValidationException::withMessages(['seats' => 'Diese Plätze gibt es nicht.']);
@@ -177,7 +180,7 @@ class AdminSeats
         $taken = $seat->attendee_id !== null && ! in_array($seat->attendee_id, $ownAttendeeIds, true);
 
         if ($blocked || $taken) {
-            throw new SeatConflict([$seat->id]);
+            throw new SeatConflict([$seat->code]);
         }
     }
 
@@ -193,12 +196,12 @@ class AdminSeats
     }
 
     /**
-     * @param  list<string>  $seatIds
+     * @param  list<string>  $codes
      * @return Collection<int, Seat>
      */
-    private function lockSeats(array $seatIds): Collection
+    private function lockSeats(Event $event, array $codes): Collection
     {
-        return Seat::whereKey($seatIds)->orderBy('id')->lockForUpdate()->get();
+        return $event->seats()->whereIn('code', $codes)->orderBy('id')->lockForUpdate()->get();
     }
 
     /**

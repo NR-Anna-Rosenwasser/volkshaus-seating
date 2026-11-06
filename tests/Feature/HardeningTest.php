@@ -7,6 +7,7 @@ use App\Enums\MailType;
 use App\Http\Controllers\HealthController;
 use App\Jobs\RecordQueueHeartbeat;
 use App\Mail\AdminAlertMail;
+use App\Mail\SeatMail;
 use App\Models\Attendee;
 use App\Models\AuditLog;
 use App\Models\MailLog;
@@ -17,9 +18,9 @@ use App\Models\WebhookEvent;
 use App\Services\AutoAssign;
 use App\Services\BuyerMailer;
 use App\Services\Hievents\OrderSync;
+use App\Services\PersonalDataPurge;
 use App\Support\DataRetention;
 use App\Support\StatusLog;
-use Database\Seeders\SeatSeeder;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -36,14 +37,16 @@ beforeEach(function () {
     Cache::flush();
     RateLimiter::clear('public');
     $this->withoutVite();
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
     $this->travelTo('2027-01-15 12:00:00');
 
+    setEvent([
+        'hievents_event_id' => '1',
+        'seated_product_ids' => ['10'],
+        'starts_at' => '2027-02-01 20:00',
+        'purge_after_days' => 30,
+    ]);
     config([
-        'seating.event_id' => '1',
-        'seating.seated_product_ids' => ['10'],
-        'seating.event_date' => '2027-02-01 20:00',
-        'seating.purge_after_days' => 30,
         'seating.admin_emails' => ['admin@example.ch'],
         'seating.hievents.webhook_secret' => 'secret',
         'seating.hievents.base_url' => 'https://hi.test',
@@ -59,7 +62,7 @@ function personalOrder(): Order
         'needs_wheelchair' => true, 'wheelchair_notified_at' => now(),
     ]);
     $attendee = Attendee::factory()->for($order)->create(['first_name' => 'Hans', 'last_name' => 'Gast']);
-    Seat::find('P-1-1')->update(['attendee_id' => $attendee->id, 'assigned_by' => AssignedBy::Buyer]);
+    seat('P-1-1')->update(['attendee_id' => $attendee->id, 'assigned_by' => AssignedBy::Buyer]);
     MailLog::create(['order_id' => $order->id, 'type' => MailType::Link, 'sent_at' => now()]);
 
     return $order;
@@ -83,7 +86,7 @@ describe('rate limits', function () {
         }
 
         $this->get($path)->assertTooManyRequests();
-    })->with(['/api/plan', '/plan']);
+    })->with(['/api/e/test/plan', '/e/test']);
 
     it('limits the webhook', function () {
         foreach (range(1, 600) as $request) {
@@ -95,10 +98,10 @@ describe('rate limits', function () {
 
     it('limits per visitor', function () {
         foreach (range(1, 120) as $request) {
-            $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.1'])->get('/api/plan')->assertOk();
+            $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.1'])->get('/api/e/test/plan')->assertOk();
         }
 
-        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])->get('/api/plan')->assertOk();
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])->get('/api/e/test/plan')->assertOk();
     });
 });
 
@@ -166,13 +169,13 @@ describe('purge', function () {
     it('leaves everything alone before the date', function () {
         $this->travelTo('2027-03-03 19:59:00');
 
-        $this->artisan('seating:purge')->expectsOutputToContain('Not due yet')->assertSuccessful();
+        $this->artisan('seating:purge')->expectsOutputToContain('not due yet')->assertSuccessful();
 
         expect($this->order->refresh()->email)->toBe('rita@example.ch');
     });
 
     it('stays idle without an event date', function () {
-        config(['seating.event_date' => null]);
+        setEvent(['starts_at' => null]);
         $this->travelTo('2030-01-01 12:00:00');
 
         $this->artisan('seating:purge')->assertSuccessful();
@@ -192,16 +195,15 @@ describe('purge', function () {
     });
 
     it('removes everything that points to a person and keeps the counts', function () {
-        $seat = Seat::find('P-1-1');
+        $seat = seat('P-1-1');
         $attendeeId = $seat->attendee_id;
-        WebhookEvent::create(['event_type' => 'order.created', 'payload_hash' => str_repeat('a', 64), 'payload' => ['email' => 'rita@example.ch'], 'received_at' => now()]);
+        WebhookEvent::create(['event_type' => 'order.created', 'payload_hash' => str_repeat('a', 64), 'payload' => ['payload' => ['event_id' => 1, 'email' => 'rita@example.ch']], 'received_at' => now()]);
         DB::table('failed_jobs')->insert(['uuid' => 'x', 'connection' => 'db', 'queue' => 'default', 'payload' => 'rita@example.ch', 'exception' => 'x', 'failed_at' => now()]);
-        DB::table('jobs')->insert(['queue' => 'default', 'payload' => 'rita@example.ch', 'attempts' => 0, 'available_at' => 0, 'created_at' => 0]);
         DB::table('sessions')->insert(['id' => 'guest', 'ip_address' => '10.0.0.1', 'payload' => 'x', 'last_activity' => 0]);
         DB::table('sessions')->insert(['id' => 'admin', 'user_id' => User::factory()->create()->id, 'payload' => 'x', 'last_activity' => 0]);
 
         $this->travelTo('2027-03-03 20:01:00');
-        $this->artisan('seating:purge')->expectsOutputToContain('Removed: 1 orders, 1 attendees')->assertSuccessful();
+        $this->artisan('seating:purge')->expectsOutputToContain('removed 1 orders, 1 attendees')->assertSuccessful();
 
         $order = $this->order->refresh();
 
@@ -212,9 +214,9 @@ describe('purge', function () {
             ->and(Attendee::find($attendeeId)->only(['first_name', 'last_name']))->each->toBeNull()
             ->and(Attendee::find($attendeeId)->hievents_attendee_id)->toBe("purged-{$attendeeId}")
             ->and(WebhookEvent::count())->toBe(0)
-            ->and(DB::table('jobs')->count())->toBe(0)
             ->and(DB::table('failed_jobs')->count())->toBe(0)
             ->and(DB::table('sessions')->pluck('id')->all())->toBe(['admin'])
+            ->and(seatedEvent()->refresh()->purged_at)->not->toBeNull()
             ->and(Order::count())->toBe(1)
             ->and(Attendee::count())->toBe(1)
             ->and($seat->refresh()->attendee_id)->toBe($attendeeId)
@@ -238,7 +240,7 @@ describe('purge', function () {
         $this->travelTo('2027-03-04 12:00:00');
 
         $this->artisan('seating:purge');
-        $this->artisan('seating:purge')->expectsOutputToContain('Nothing to remove');
+        $this->artisan('seating:purge')->assertSuccessful();
 
         Mail::assertSent(AdminAlertMail::class, 1);
     });
@@ -255,7 +257,7 @@ describe('purge', function () {
         $this->travelTo('2027-03-04 12:00:00');
         $this->artisan('seating:purge');
 
-        signedWebhook(['event_type' => 'order.updated', 'payload' => ['id' => 1, 'email' => 'rita@example.ch']])->assertOk();
+        signedWebhook(['event_type' => 'order.updated', 'payload' => ['id' => 1, 'event_id' => 1, 'email' => 'rita@example.ch']])->assertOk();
 
         expect(WebhookEvent::count())->toBe(0);
     });
@@ -277,7 +279,7 @@ describe('purge', function () {
     });
 
     it('knows the date', function () {
-        expect(app(DataRetention::class)->purgeDate()->format('Y-m-d H:i'))->toBe('2027-03-03 20:00');
+        expect(DataRetention::for(seatedEvent())->purgeDate()->format('Y-m-d H:i'))->toBe('2027-03-03 20:00');
     });
 });
 
@@ -351,9 +353,12 @@ it('runs everything on a schedule', function () {
 });
 
 it('keeps the audit trail through a late sale before the purge', function () {
-    config(['seating.selection_opens_at' => '2026-12-01 10:00', 'seating.selection_deadline' => '2027-01-10 23:59']);
+    setEvent([
+        'selection_opens_at' => '2026-12-01 10:00',
+        'selection_deadline' => '2027-01-10 23:59',
+    ]);
 
-    app(OrderSync::class)->syncOrder([
+    app(OrderSync::class)->syncOrder(seatedEvent(), [
         'id' => 77, 'event_id' => 1, 'short_id' => 'o_late', 'public_id' => 'O', 'status' => 'COMPLETED', 'first_name' => 'L', 'last_name' => 'B',
         'email' => 'l@example.ch', 'created_at' => '2027-01-15T10:00:00.000000Z', 'question_answers' => [],
         'attendees' => [['id' => 78, 'order_id' => 77, 'event_id' => 1, 'product_id' => 10, 'status' => 'ACTIVE', 'first_name' => 'L', 'last_name' => 'B']],
@@ -403,22 +408,32 @@ describe('redis', function () {
             ->and(MailLog::where('type', MailType::Confirmation)->count())->toBe(0);
     });
 
-    it('clears queued jobs and job history in the purge', function () {
+    it('leaves the queue alone in a purge, because other events are still using it', function () {
         personalOrder();
-        Redis::connection()->set('horizon-job-history', 'rita@example.ch');
         RecordQueueHeartbeat::dispatch();
+        $queued = Redis::connection()->dbsize();
 
         $this->travelTo('2027-03-04 12:00:00');
         $this->artisan('seating:purge')->assertSuccessful();
 
-        expect(Redis::connection()->dbsize())->toBe(0);
+        expect(Redis::connection()->dbsize())->toBe($queued);
     });
 });
 
-it('removes nothing and alerts if Redis is unreachable during the purge', function () {
+it('does not send a mail that was still queued when its event was purged', function () {
+    $mail = new SeatMail(personalOrder(), MailType::Reminder);
+    seatedEvent()->update(['purged_at' => now()]);
+    $mail->order->unsetRelation('event');
+    Mail::fake();
+
+    expect($mail->send(app('mail.manager')))->toBeNull();
+});
+
+it('removes nothing and alerts if the purge fails', function () {
     $order = personalOrder();
-    config(['database.redis.default.host' => '127.0.0.1', 'database.redis.default.port' => 1, 'database.redis.default.max_retries' => 0]);
-    Redis::purge();
+    $purge = Mockery::mock(PersonalDataPurge::class)->makePartial();
+    $purge->shouldReceive('run')->andThrow(new RuntimeException('database gone'));
+    $this->app->instance(PersonalDataPurge::class, $purge);
 
     $this->travelTo('2027-03-04 12:00:00');
     $this->artisan('seating:purge')->assertFailed();
@@ -446,13 +461,13 @@ describe('horizon', function () {
 });
 
 it('keeps run status when the cache is lost', function () {
-    config(['seating.selection_deadline' => '2027-01-10 23:59']);
+    setEvent(['selection_deadline' => '2027-01-10 23:59']);
     $order = Order::factory()->create();
     Attendee::factory()->count(2)->for($order)->create();
     MailLog::create(['order_id' => $order->id, 'type' => MailType::Link, 'sent_at' => now()]);
     Seat::whereNull('block_reason')->update(['block_reason' => BlockReason::Other]);
 
-    app(AutoAssign::class)->run();
+    app(AutoAssign::class)->run(seatedEvent());
     Cache::flush();
     Mail::fake();
 
@@ -462,7 +477,7 @@ it('keeps run status when the cache is lost', function () {
 });
 
 it('promises the time the data really stays', function () {
-    $days = config('seating.purge_after_days') + config('seating.backup_keep_days');
+    $days = seatedEvent()->refresh()->purge_after_days + config('seating.backup_keep_days');
     $order = Order::factory()->create();
     Attendee::factory()->for($order)->create();
 

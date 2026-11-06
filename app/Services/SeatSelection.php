@@ -12,7 +12,6 @@ use App\Models\Attendee;
 use App\Models\AuditLog;
 use App\Models\Order;
 use App\Models\Seat;
-use App\Support\SelectionWindow;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -26,7 +25,6 @@ class SeatSelection
     public const SINGLE_GAP_MESSAGE = 'Zwischen euren Plätzen bleibt ein einzelner Platz frei. Bitte rückt zusammen.';
 
     public function __construct(
-        private readonly SelectionWindow $window,
         private readonly BuyerMailer $mailer,
     ) {}
 
@@ -35,14 +33,14 @@ class SeatSelection
      */
     public function mayChoose(Order $order): bool
     {
-        return $this->window->isOpen()
+        return $order->event->window()->isOpen()
             && $order->status === OrderStatus::Active
             && ! $order->needs_wheelchair
             && $order->seatsNeeded() > 0;
     }
 
     /**
-     * @param  list<string>  $seatIds
+     * @param  list<string>  $seatIds  Seat codes.
      *
      * @throws SeatConflict
      * @throws ValidationException
@@ -50,9 +48,9 @@ class SeatSelection
     public function save(Order $order, array $seatIds): void
     {
         DB::transaction(function () use ($order, $seatIds): void {
-            Order::lockByHieventsId($order->hievents_order_id);
+            $order->lock();
 
-            // Webhooks may have changed the order since the request began.
+            // A sync may have changed the order since the request began.
             $order->refresh();
             $attendees = $order->attendees()
                 ->where('status', AttendeeStatus::Active)
@@ -64,14 +62,16 @@ class SeatSelection
                 throw ValidationException::withMessages(['seats' => 'Die Anzahl Plätze stimmt nicht.']);
             }
 
-            $seats = Seat::query()
+            $seats = $order->event->seats()
                 ->where(fn ($query) => $query
-                    ->whereIn('id', $seatIds)
+                    ->whereIn('code', $seatIds)
                     ->orWhereIn('attendee_id', $order->attendees()->select('attendees.id')))
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
-                ->keyBy('id');
+                ->keyBy('code')
+                // Eloquent collections look up only() by primary key, not by these codes.
+                ->toBase();
 
             if (count(array_diff($seatIds, $seats->keys()->all())) > 0) {
                 throw ValidationException::withMessages(['seats' => 'Diese Plätze gibt es nicht.']);
@@ -131,7 +131,7 @@ class SeatSelection
                 }
 
                 $seat = $segment->first();
-                $between = Seat::query()
+                $between = $seat->event->seats()
                     ->where(['section' => $seat->section, 'row' => $seat->row, 'segment' => $seat->segment, 'number' => $pair->first() + 1])
                     ->first();
 
@@ -153,8 +153,8 @@ class SeatSelection
     private function assign(Order $order, Collection $seats, array $seatIds, Collection $attendees): void
     {
         foreach ($seats as $seat) {
-            if ($seat->attendee_id !== null && ! in_array($seat->id, $seatIds, true)) {
-                $this->audit('seat_released', $seat->id, $seat->attendee_id);
+            if ($seat->attendee_id !== null && ! in_array($seat->code, $seatIds, true)) {
+                $this->audit('seat_released', $seat, $seat->attendee_id);
                 $seat->update(['attendee_id' => null, 'assigned_at' => null, 'assigned_by' => null]);
             }
         }
@@ -171,16 +171,16 @@ class SeatSelection
                     'assigned_at' => now(),
                     'assigned_by' => AssignedBy::Buyer,
                 ]);
-                $this->audit('seat_assigned', $id, $waiting[$index]->id);
+                $this->audit('seat_assigned', $seats[$id], $waiting[$index]->id);
             });
     }
 
-    private function audit(string $action, string $seatId, int $attendeeId): void
+    private function audit(string $action, Seat $seat, int $attendeeId): void
     {
         AuditLog::create([
             'actor' => AuditActor::Buyer,
             'action' => $action,
-            'seat_id' => $seatId,
+            'seat_id' => $seat->id,
             'attendee_id' => $attendeeId,
         ]);
     }

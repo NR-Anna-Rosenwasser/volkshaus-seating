@@ -4,20 +4,19 @@ use App\Enums\BlockReason;
 use App\Models\Attendee;
 use App\Models\Seat;
 use App\Services\BestSeats;
-use Database\Seeders\SeatSeeder;
 
 beforeEach(function () {
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
 });
 
 function bestSeats(int $count, array $own = [], array $nearSeatIds = []): array
 {
-    return app(BestSeats::class)->find($count, $own, $nearSeatIds);
+    return app(BestSeats::class)->find(seatedEvent(), $count, $own, $nearSeatIds);
 }
 
 function fillSeats(iterable $ids): void
 {
-    Seat::whereIn('id', $ids)->update(['block_reason' => BlockReason::Other]);
+    Seat::whereIn('code', $ids)->update(['block_reason' => BlockReason::Other]);
 }
 
 /**
@@ -25,7 +24,7 @@ function fillSeats(iterable $ids): void
  */
 function onlyFree(array $ids): void
 {
-    Seat::whereNotIn('id', $ids)->whereNull('block_reason')->update(['block_reason' => BlockReason::Other]);
+    Seat::whereNotIn('code', $ids)->whereNull('block_reason')->update(['block_reason' => BlockReason::Other]);
 }
 
 it('starts in the centre of the front row', function () {
@@ -33,7 +32,7 @@ it('starts in the centre of the front row', function () {
 });
 
 it('keeps a group together in one row and segment', function () {
-    $seats = Seat::findMany(bestSeats(6));
+    $seats = Seat::whereIn('code', bestSeats(6))->get();
 
     expect($seats->pluck('row')->unique())->toHaveCount(1)
         ->and($seats->pluck('segment')->unique())->toHaveCount(1);
@@ -44,9 +43,9 @@ it('keeps a group together in one row and segment', function () {
 });
 
 it('moves back when the front row is full', function () {
-    fillSeats(Seat::where('section', 'parterre')->where('row', 1)->pluck('id'));
+    fillSeats(Seat::where('section', 'parterre')->where('row', 1)->pluck('code'));
 
-    expect(Seat::findMany(bestSeats(2))->pluck('row')->unique()->all())->toBe([2]);
+    expect(Seat::whereIn('code', bestSeats(2))->get()->pluck('row')->unique()->all())->toBe([2]);
 });
 
 it('does not treat seats across a pillar as neighbours', function () {
@@ -70,7 +69,7 @@ it('fills obstructed seats last', function () {
 
 it('counts a group\'s own seats as free', function () {
     $attendee = Attendee::factory()->create();
-    Seat::find('P-1-13')->update(['attendee_id' => $attendee->id]);
+    seat('P-1-13')->update(['attendee_id' => $attendee->id]);
 
     expect(bestSeats(1))->not->toBe(['P-1-13'])
         ->and(bestSeats(1, ['P-1-13']))->toBe(['P-1-13']);
@@ -83,7 +82,7 @@ it('is deterministic', function () {
 it('splits into 2 + 2 rather than leaving someone alone', function () {
     onlyFree(['P-5-1', 'P-5-2', 'P-5-3', 'P-5-10', 'P-6-1', 'P-6-2']);
 
-    $rows = Seat::findMany(bestSeats(4))->groupBy('row')->map->count()->all();
+    $rows = Seat::whereIn('code', bestSeats(4))->get()->groupBy('row')->map->count()->all();
 
     expect($rows)->toEqualCanonicalizing([5 => 2, 6 => 2]);
 });
@@ -91,7 +90,7 @@ it('splits into 2 + 2 rather than leaving someone alone', function () {
 it('prefers parts in neighbouring rows', function () {
     onlyFree(['P-5-1', 'P-5-2', 'P-6-1', 'P-6-2', 'P-20-13', 'P-20-14']);
 
-    expect(Seat::findMany(bestSeats(4))->pluck('row')->unique()->sort()->values()->all())->toBe([5, 6]);
+    expect(Seat::whereIn('code', bestSeats(4))->get()->pluck('row')->unique()->sort()->values()->all())->toBe([5, 6]);
 });
 
 it('falls back to single seats', function () {
@@ -109,7 +108,7 @@ it('returns nothing when too few seats are free', function () {
 it('does not strand a single seat when the group can sit at the end of a stretch', function () {
     onlyFree(['P-5-5', 'P-5-6', 'P-5-7', 'P-5-8', 'P-5-9']);
 
-    $numbers = Seat::findMany(bestSeats(3))->pluck('number')->sort()->values()->all();
+    $numbers = Seat::whereIn('code', bestSeats(3))->get()->pluck('number')->sort()->values()->all();
 
     expect($numbers)->not->toBe([6, 7, 8]);
 });
@@ -118,13 +117,13 @@ it('moves a row back rather than strand a seat', function () {
     onlyFree(['P-5-5', 'P-5-6', 'P-5-7', 'P-6-5', 'P-6-6', 'P-6-7', 'P-6-8']);
 
     // Three fills row 5 exactly. Two would strand its third seat, one row 6 does not.
-    expect(Seat::findMany(bestSeats(3))->pluck('row')->unique()->all())->toBe([5])
-        ->and(Seat::findMany(bestSeats(2))->pluck('row')->unique()->all())->toBe([6]);
+    expect(Seat::whereIn('code', bestSeats(3))->get()->pluck('row')->unique()->all())->toBe([5])
+        ->and(Seat::whereIn('code', bestSeats(2))->get()->pluck('row')->unique()->all())->toBe([6]);
 });
 
 it('prefers a clear seat over avoiding a stranded seat', function () {
-    $clear = Seat::where('section', 'parterre')->whereJsonDoesntContain('flags', 'obstructed')->where('row', 8)->orderBy('number')->limit(2)->pluck('id');
-    $obstructed = Seat::whereJsonContains('flags', 'obstructed')->limit(6)->pluck('id');
+    $clear = Seat::where('section', 'parterre')->whereJsonDoesntContain('flags', 'obstructed')->where('row', 8)->orderBy('number')->limit(2)->pluck('code');
+    $obstructed = Seat::whereJsonContains('flags', 'obstructed')->limit(6)->pluck('code');
     onlyFree([...$clear, ...$obstructed]);
 
     expect($clear)->toContain(bestSeats(1)[0]);
@@ -135,6 +134,6 @@ it('stays close to seats the group already has', function () {
 
     $seats = bestSeats(1, nearSeatIds: ['P-12-7', 'P-12-8']);
 
-    expect(Seat::find($seats[0])->row)->toBe(12)
+    expect(seat($seats[0])->row)->toBe(12)
         ->and($seats[0])->toBeIn(['P-12-6', 'P-12-9']);
 });

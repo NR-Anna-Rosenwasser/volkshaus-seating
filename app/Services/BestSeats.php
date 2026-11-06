@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Event;
 use App\Models\Seat;
-use App\Support\VenueLayout;
 use Illuminate\Support\Collection;
 
 /**
@@ -31,16 +31,14 @@ class BestSeats
      */
     private const LONE_SEAT_PENALTY = 30;
 
-    public function __construct(private readonly VenueLayout $layout) {}
-
     /**
-     * @param  list<string>  $ownSeatIds  Seats that count as free for this group.
-     * @param  list<string>  $nearSeatIds  Seats to stay close to, such as the rest of the group.
-     * @return list<string>
+     * @param  list<string>  $ownCodes  Seats that count as free for this group.
+     * @param  list<string>  $nearCodes  Seats to stay close to, such as the rest of the group.
+     * @return list<string> Seat codes.
      */
-    public function find(int $count, array $ownSeatIds = [], array $nearSeatIds = []): array
+    public function find(Event $event, int $count, array $ownCodes = [], array $nearCodes = []): array
     {
-        $seats = $this->freeSeats($ownSeatIds, $nearSeatIds);
+        $seats = $this->freeSeats($event, $ownCodes, $nearCodes);
 
         if ($count < 1 || $seats->count() < $count) {
             return [];
@@ -53,26 +51,27 @@ class BestSeats
     }
 
     /**
-     * @param  list<string>  $ownSeatIds
-     * @param  list<string>  $nearSeatIds
+     * @param  list<string>  $ownCodes
+     * @param  list<string>  $nearCodes
      * @return Collection<int, array<string, mixed>>
      */
-    private function freeSeats(array $ownSeatIds, array $nearSeatIds): Collection
+    private function freeSeats(Event $event, array $ownCodes, array $nearCodes): Collection
     {
-        $center = $this->layout->centerX();
-        $order = array_flip(config('seating.section_preference'));
-        $sideSections = $this->layout->verticalSections();
-        $near = Seat::findMany($nearSeatIds);
+        $layout = $event->venueLayout();
+        $center = $layout->centerX();
+        $order = $layout->sectionRanks();
+        $sideSections = $layout->verticalSections();
+        $near = $event->seats()->whereIn('code', $nearCodes)->get();
 
-        return Seat::query()
+        return $event->seats()
             ->sellable()
-            ->where(fn ($query) => $query->whereNull('attendee_id')->orWhereIn('id', $ownSeatIds))
+            ->where(fn ($query) => $query->whereNull('attendee_id')->orWhereIn('code', $ownCodes))
             ->get()
             ->map(function (Seat $seat) use ($center, $order, $sideSections, $near): array {
                 $side = in_array($seat->section, $sideSections, true);
 
                 return [
-                    'id' => $seat->id,
+                    'id' => $seat->code,
                     'section' => $seat->section,
                     'row' => $seat->row,
                     'number' => $seat->number,
@@ -85,7 +84,7 @@ class BestSeats
                         $order[$seat->section] ?? PHP_INT_MAX,
                         $side ? $seat->number : $seat->row,
                         $side ? $seat->row : abs($seat->x - $center),
-                        $seat->id,
+                        $seat->code,
                     ],
                 ];
             })

@@ -10,12 +10,13 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Support\Facades\DB;
 
 #[Fillable([
-    'hievents_order_id', 'hievents_public_id', 'short_id',
+    'event_id', 'hievents_order_id', 'hievents_public_id', 'short_id',
     'email', 'first_name', 'last_name', 'locale', 'status',
     'token_hash', 'seats_confirmed_at', 'reminders_sent', 'last_reminder_at',
     'token_version', 'needs_wheelchair', 'wheelchair_notified_at', 'created_at',
@@ -45,9 +46,14 @@ class Order extends Model
      * Serialises all changes to one order until the transaction ends. Seat
      * rows are locked after this, always in id order.
      */
-    public static function lockByHieventsId(string $hieventsOrderId): void
+    public static function lockByHieventsId(int $eventId, string $hieventsOrderId): void
     {
-        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ["hievents-order-{$hieventsOrderId}"]);
+        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ["hievents-order-{$eventId}-{$hieventsOrderId}"]);
+    }
+
+    public function lock(): void
+    {
+        static::lockByHieventsId($this->event_id, $this->hievents_order_id);
     }
 
     /**
@@ -121,6 +127,11 @@ class Order extends Model
     public function say(string $solo, string $group): string
     {
         return $this->seatsNeeded() === 1 ? $solo : $group;
+    }
+
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
     }
 
     public function attendees(): HasMany

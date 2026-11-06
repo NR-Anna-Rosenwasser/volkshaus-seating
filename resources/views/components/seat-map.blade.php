@@ -14,7 +14,7 @@
     xmlns="http://www.w3.org/2000/svg"
     viewBox="{{ $viewBox['x'] }} {{ $viewBox['y'] }} {{ $viewBox['width'] }} {{ $viewBox['height'] }}"
     role="img"
-    aria-label="Saalplan des Theatersaals mit Bühne, Parterre und Galerien"
+    aria-label="Saalplan mit Bühne und Sitzbereichen"
 >
     <g class="seat-map__stage">
         <rect x="{{ $stage['x0'] }}" y="{{ $stage['y0'] }}" width="{{ $stage['x1'] - $stage['x0'] }}" height="{{ $stage['y1'] - $stage['y0'] }}" />
@@ -31,6 +31,8 @@
                         'is-selected' => in_array($seat['id'], $highlight, true),
                     ])
                     data-seat="{{ $seat['id'] }}"
+                    data-row="{{ $seat['row'] }}"
+                    data-number="{{ $seat['number'] }}"
                     data-segment="{{ $seat['segment'] }}"
                     data-state="{{ $states[$seat['id']] ?? 'blocked' }}"
                 ><circle cx="{{ $seat['x'] }}" cy="{{ $seat['y'] }}" r="{{ $radius }}" /><text x="{{ $seat['x'] }}" y="{{ $seat['y'] }}">{{ $seat['number'] }}</text></g>

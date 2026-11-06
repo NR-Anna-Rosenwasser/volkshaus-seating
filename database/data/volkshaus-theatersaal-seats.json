@@ -19,12 +19,14 @@
     "sections": [
         {
             "id": "parterre",
+            "rank": 0,
             "label": "Parterre",
             "level": "EG",
             "row_label_axis": "horizontal"
         },
         {
             "id": "galerie-links",
+            "rank": 2,
             "label": "Galerie links",
             "level": "Galerie",
             "row_label_axis": "vertical",
@@ -32,12 +34,14 @@
         },
         {
             "id": "galerie-mitte",
+            "rank": 1,
             "label": "Galerie mitte",
             "level": "Galerie",
             "row_label_axis": "horizontal"
         },
         {
             "id": "galerie-rechts",
+            "rank": 3,
             "label": "Galerie rechts",
             "level": "Galerie",
             "row_label_axis": "vertical",

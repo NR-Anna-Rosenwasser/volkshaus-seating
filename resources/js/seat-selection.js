@@ -84,11 +84,7 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
 
         /** Same row and segment, without a gap. */
         together() {
-            const seats = this.selected.map((id) => {
-                const [section, row, number] = id.split('-');
-
-                return { section, row, number: Number(number), segment: this.seatElement(id)?.dataset.segment };
-            });
+            const seats = this.selected.map((id) => this.place(this.seatElement(id)));
 
             const numbers = seats.map((seat) => seat.number).sort((a, b) => a - b);
 
@@ -98,17 +94,35 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
 
         /** One free seat left between two of the group's own seats. */
         hasSingleGap() {
-            return this.selected.some((id) => {
-                const [prefix, row, number] = id.split('-');
-                const between = this.seatElement(`${prefix}-${row}-${Number(number) + 1}`);
-                const next = `${prefix}-${row}-${Number(number) + 2}`;
+            const places = this.selected.map((id) => this.place(this.seatElement(id)));
 
-                return this.selected.includes(next)
+            return places.some((place) => {
+                const between = this.seatAt({ ...place, number: place.number + 1 });
+
+                return places.some((other) => this.samePart(place, other) && other.number === place.number + 2)
                     && between?.dataset.state === 'free'
-                    && !this.selected.includes(between.dataset.seat)
-                    && between.dataset.segment === this.seatElement(id).dataset.segment
-                    && this.seatElement(next).dataset.segment === this.seatElement(id).dataset.segment;
+                    && !this.selected.includes(between.dataset.seat);
             });
+        },
+
+        /** Where a seat is. Seat codes are not parsed: a plan can name them freely. */
+        place(el) {
+            return {
+                section: el?.closest('[data-section-seats]').dataset.sectionSeats,
+                row: el?.dataset.row,
+                segment: el?.dataset.segment,
+                number: Number(el?.dataset.number),
+            };
+        },
+
+        samePart(a, b) {
+            return a.section === b.section && a.row === b.row && a.segment === b.segment;
+        },
+
+        seatAt(place) {
+            const section = this.$refs.viewport.querySelector(`[data-section-seats="${place.section}"]`);
+
+            return section?.querySelector(`[data-row="${place.row}"][data-segment="${place.segment}"][data-number="${place.number}"]`);
         },
 
         complete() {

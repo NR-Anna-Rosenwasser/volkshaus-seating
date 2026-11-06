@@ -7,16 +7,19 @@ use Database\Factories\UserFactory;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthentication;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthenticationRecovery;
 use Filament\Models\Contracts\FilamentUser;
+use Filament\Models\Contracts\HasTenants;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token', 'app_authentication_secret', 'app_authentication_recovery_codes'])]
-class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery
+class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery, HasTenants
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
@@ -25,6 +28,21 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
      * Users exist only through AdminUserSeeder; there is no registration.
      */
     public function canAccessPanel(Panel $panel): bool
+    {
+        return true;
+    }
+
+    /**
+     * Every admin sees every event. Without the plan: this runs on each page.
+     *
+     * @return Collection<int, Event>
+     */
+    public function getTenants(Panel $panel): Collection
+    {
+        return Event::query()->orderByDesc('starts_at')->get(['id', 'name', 'slug', 'starts_at'])->toBase();
+    }
+
+    public function canAccessTenant(Model $tenant): bool
     {
         return true;
     }

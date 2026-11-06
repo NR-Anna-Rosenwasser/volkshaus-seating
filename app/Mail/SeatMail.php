@@ -6,7 +6,7 @@ use App\Enums\MailType;
 use App\Models\Order;
 use App\Models\Seat;
 use App\Support\SelectionWindow;
-use App\Support\VenueLayout;
+use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -14,7 +14,6 @@ use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Carbon;
 use LogicException;
 
 /**
@@ -32,13 +31,21 @@ class SeatMail extends Mailable implements ShouldQueue
 
     public function __construct(public Order $order, public MailType $type) {}
 
+    /**
+     * A mail still queued when its event was purged must not go out: the
+     * address it carries is the last trace of that person.
+     */
+    public function send($mailer)
+    {
+        return $this->order->event->purged_at === null ? parent::send($mailer) : null;
+    }
+
     public function envelope(): Envelope
     {
-        $event = config('seating.event_name');
-        $contact = config('seating.contact_email');
+        $contact = $this->order->event->contact_email;
 
         return new Envelope(
-            subject: $event ? "{$this->subjectLine()}: {$event}" : $this->subjectLine(),
+            subject: "{$this->subjectLine()}: {$this->order->event->name}",
             replyTo: $contact ? [new Address($contact)] : [],
         );
     }
@@ -69,7 +76,8 @@ class SeatMail extends Mailable implements ShouldQueue
      */
     private function copy(): array
     {
-        $window = app(SelectionWindow::class);
+        $event = $this->order->event;
+        $window = $event->window();
         $deadline = SelectionWindow::format($window->deadline());
         $selection = $this->order->selectionUrl();
         $pass = "{$selection}/ticket";
@@ -79,7 +87,7 @@ class SeatMail extends Mailable implements ShouldQueue
             'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur deinen Sitzplatz.',
             'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur euren Sitzplatz.',
         );
-        $contact = config('seating.contact_email');
+        $contact = $event->contact_email;
         $changes = $contact
             ? $this->order->say("Für Änderungen schreib uns an {$contact}.", "Für Änderungen schreibt uns an {$contact}.")
             : $this->order->say('Für Änderungen melde dich bei uns.', 'Für Änderungen meldet euch bei uns.');
@@ -97,7 +105,7 @@ class SeatMail extends Mailable implements ShouldQueue
                     $this->order->say('Du kannst jetzt deinen Platz wählen.', "Ihr könnt jetzt eure Plätze wählen. Ihr braucht {$needed} Plätze."),
                     $this->order->say("Du kannst deine Wahl bis {$deadline} ändern.", "Ihr könnt eure Wahl bis {$deadline} ändern."),
                 ],
-                'closing' => [$this->order->say('Wie voll es schon ist, siehst du hier: ', 'Wie voll es schon ist, seht ihr hier: ').route('plan')],
+                'closing' => [$this->order->say('Wie voll es schon ist, siehst du hier: ', 'Wie voll es schon ist, seht ihr hier: ').route('plan', $event)],
                 'buttonLabel' => $this->order->say('Platz wählen', 'Plätze wählen'),
                 'buttonUrl' => $selection,
             ],
@@ -129,8 +137,8 @@ class SeatMail extends Mailable implements ShouldQueue
             ],
             MailType::Final => [
                 'lines' => array_values(array_filter([
-                    $this->eventLine('seating.event_date', $this->order->say('Wir freuen uns auf dich am %s.', 'Wir freuen uns auf euch am %s.')),
-                    $this->eventLine('seating.doors_at', 'Türöffnung: %s.'),
+                    $this->eventLine($event->starts_at, $this->order->say('Wir freuen uns auf dich am %s.', 'Wir freuen uns auf euch am %s.')),
+                    $this->eventLine($event->doors_at, 'Türöffnung: %s.'),
                     $this->order->say('Das ist dein Platz:', 'Das sind eure Plätze:'),
                 ])),
                 'closing' => [$entry],
@@ -141,11 +149,9 @@ class SeatMail extends Mailable implements ShouldQueue
         };
     }
 
-    private function eventLine(string $key, string $line): ?string
+    private function eventLine(?CarbonInterface $date, string $line): ?string
     {
-        $date = config($key);
-
-        return $date ? sprintf($line, SelectionWindow::format(Carbon::parse($date, config('app.timezone')))) : null;
+        return $date ? sprintf($line, SelectionWindow::format($date)) : null;
     }
 
     /**
@@ -157,7 +163,7 @@ class SeatMail extends Mailable implements ShouldQueue
             return [];
         }
 
-        $layout = app(VenueLayout::class);
+        $layout = $this->order->event->venueLayout();
 
         return $this->order->seats()
             ->orderBy('section')->orderBy('row')->orderBy('number')

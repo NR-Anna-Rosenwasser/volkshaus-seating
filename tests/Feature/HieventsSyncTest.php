@@ -16,7 +16,6 @@ use App\Models\Order;
 use App\Models\Seat;
 use App\Models\WebhookEvent;
 use App\Services\Hievents\OrderSync;
-use Database\Seeders\SeatSeeder;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 
@@ -25,18 +24,20 @@ const WEBHOOK_SECRET = 'test-secret';
 beforeEach(function () {
     Mail::fake();
 
+    setEvent([
+        'hievents_event_id' => '1',
+        'seated_product_ids' => ['10'],
+        'wheelchair_question_ids' => ['7'],
+        'wheelchair_notify_emails' => ['anna@example.ch', 'team@example.ch'],
+    ]);
     config([
-        'seating.event_id' => '1',
-        'seating.seated_product_ids' => ['10'],
-        'seating.wheelchair_question_ids' => ['7'],
-        'seating.wheelchair_notify_emails' => ['anna@example.ch', 'team@example.ch'],
         'seating.hievents.webhook_secret' => WEBHOOK_SECRET,
         'seating.hievents.base_url' => 'https://hi.test',
         'seating.hievents.api_key' => 'key',
         'seating.admin_emails' => ['admin@example.ch'],
     ]);
 
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
 });
 
 function attendeePayload(int $id, array $overrides = []): array
@@ -77,7 +78,7 @@ function sendWebhook(string $type, array $payload, ?string $secret = WEBHOOK_SEC
 
 function seatAttendee(string $hieventsAttendeeId, string $seatId): void
 {
-    Seat::findOrFail($seatId)->update([
+    seat($seatId)->update([
         'block_reason' => null,
         'attendee_id' => Attendee::where('hievents_attendee_id', $hieventsAttendeeId)->value('id'),
         'assigned_at' => now(),
@@ -135,7 +136,7 @@ it('ignores other events', function () {
 });
 
 it('ignores event types it does not handle', function () {
-    sendWebhook('product.updated', ['id' => 1])->assertOk();
+    sendWebhook('product.updated', ['id' => 1, 'event_id' => 1])->assertOk();
 
     expect(WebhookEvent::sole()->processed_at)->not->toBeNull();
 });
@@ -182,8 +183,8 @@ it('frees one seat when one attendee is cancelled and confirms the rest', functi
 
     sendWebhook('attendee.cancelled', attendeePayload(1, ['status' => 'CANCELLED']));
 
-    expect(Seat::find('P-1-1')->attendee_id)->toBeNull()
-        ->and(Seat::find('P-1-2')->attendee_id)->not->toBeNull()
+    expect(seat('P-1-1')->attendee_id)->toBeNull()
+        ->and(seat('P-1-2')->attendee_id)->not->toBeNull()
         ->and(Order::sole()->status)->toBe(OrderStatus::Active);
 
     Mail::assertQueued(SeatMail::class, fn (SeatMail $mail) => $mail->type === MailType::Confirmation && $mail->hasTo('rita@example.ch'));
@@ -241,7 +242,7 @@ it('renders the wheelchair notice', function () {
     $mail = new WheelchairNotice(Order::sole(), MailType::WheelchairRequested);
 
     expect($mail->render())->toContain('rita@example.ch')->toContain('Rita Muster')->toContain('o_abc');
-    $mail->assertHasSubject('Rollstuhlplatz gewünscht: Bestellung o_abc');
+    $mail->assertHasSubject('Rollstuhlplatz gewünscht: '.seatedEvent()->name.', Bestellung o_abc');
 });
 
 it('ignores other questions and unanswered boxes', function () {
@@ -261,7 +262,7 @@ it('reports a cancelled wheelchair order and blocks its seats again', function (
 
     Mail::assertQueued(WheelchairNotice::class, fn (WheelchairNotice $mail) => $mail->type === MailType::WheelchairCancelled);
 
-    expect(Seat::find('P-4-26'))
+    expect(seat('P-4-26'))
         ->attendee_id->toBeNull()
         ->block_reason->toBe(BlockReason::Wheelchair);
 });
@@ -277,7 +278,7 @@ it('only reports a wheelchair cancellation once no ticket is left', function () 
 });
 
 it('warns instead of losing a request when no recipient is configured', function () {
-    config(['seating.wheelchair_notify_emails' => []]);
+    setEvent(['wheelchair_notify_emails' => []]);
 
     sendWebhook('order.created', orderPayload(['question_answers' => [wheelchairAnswer()]]));
 
@@ -286,10 +287,10 @@ it('warns instead of losing a request when no recipient is configured', function
 });
 
 it('refuses to sync without a product whitelist', function () {
-    config(['seating.seated_product_ids' => []]);
+    setEvent(['seated_product_ids' => []]);
 
-    app(OrderSync::class)->syncOrder(orderPayload());
-})->throws(RuntimeException::class, 'SEATED_PRODUCT_IDS');
+    app(OrderSync::class)->syncOrder(seatedEvent(), orderPayload());
+})->throws(RuntimeException::class, 'no seated products');
 
 it('records a failed delivery and alerts', function () {
     $event = WebhookEvent::create([
@@ -368,7 +369,7 @@ it('alerts and fails when the API is down', function () {
 
     $this->artisan('seating:reconcile')->assertFailed();
 
-    Mail::assertSent(AdminAlertMail::class, fn (AdminAlertMail $mail) => $mail->title === 'Abgleich fehlgeschlagen');
+    Mail::assertSent(AdminAlertMail::class, fn (AdminAlertMail $mail) => str_ends_with($mail->title, 'Abgleich fehlgeschlagen'));
 });
 
 it('sends no alert when nothing changed', function () {

@@ -12,7 +12,6 @@ use App\Models\MailLog;
 use App\Models\Order;
 use App\Models\Seat;
 use App\Services\BuyerMailer;
-use App\Support\VenueLayout;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\IconEntry;
@@ -195,7 +194,7 @@ class OrderResource extends Resource
      */
     private static function seatLabels(Order $order): array
     {
-        $layout = app(VenueLayout::class);
+        $layout = $order->event->venueLayout();
 
         return $order->seats
             ->sortBy(['section', 'row', 'number'])
@@ -212,6 +211,6 @@ class OrderResource extends Resource
             return "{$name}: storniert";
         }
 
-        return $name.': '.($attendee->seat ? app(VenueLayout::class)->seatLabel($attendee->seat) : 'kein Platz');
+        return $name.': '.($attendee->seat ? $attendee->order->event->venueLayout()->seatLabel($attendee->seat) : 'kein Platz');
     }
 }

@@ -5,12 +5,12 @@ namespace App\Filament\Pages;
 use App\Enums\BlockReason;
 use App\Enums\OrderStatus;
 use App\Exceptions\SeatConflict;
+use App\Filament\Concerns\UsesCurrentEvent;
 use App\Filament\Resources\Orders\OrderResource;
 use App\Models\Order;
 use App\Models\Seat;
 use App\Services\AdminSeats;
 use App\Services\SeatStats;
-use App\Support\VenueLayout;
 use BackedEnum;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -21,6 +21,8 @@ use Livewire\Attributes\Url;
 
 class Saalplan extends Page
 {
+    use UsesCurrentEvent;
+
     /** Long enough to read, short enough not to pile up over the map. */
     private const REMINDER_SECONDS = 8;
 
@@ -44,7 +46,7 @@ class Saalplan extends Page
     protected function getViewData(): array
     {
         return [
-            'layout' => app(VenueLayout::class),
+            'layout' => $this->event()->venueLayout(),
             'plan' => $this->mapData(),
             'assigning' => $this->assignment(),
             'reasons' => collect(BlockReason::cases())
@@ -59,13 +61,13 @@ class Saalplan extends Page
     #[Renderless]
     public function mapData(): array
     {
-        $seats = Seat::query()->get(['id', 'block_reason', 'attendee_id']);
-        $stats = app(SeatStats::class)->snapshot();
+        $seats = $this->event()->seats()->get(['code', 'block_reason', 'attendee_id']);
+        $stats = app(SeatStats::class)->snapshot($this->event());
 
         return [
-            'seats' => $seats->mapWithKeys(fn (Seat $seat): array => [$seat->id => $seat->state()->value])->all(),
+            'seats' => $seats->mapWithKeys(fn (Seat $seat): array => [$seat->code => $seat->state()->value])->all(),
             'reasons' => $seats->whereNotNull('block_reason')
-                ->mapWithKeys(fn (Seat $seat): array => [$seat->id => $seat->block_reason->value])
+                ->mapWithKeys(fn (Seat $seat): array => [$seat->code => $seat->block_reason->value])
                 ->all(),
             'sellable' => $stats['sellable'],
             'sold' => $stats['sold'],
@@ -78,17 +80,17 @@ class Saalplan extends Page
     #[Renderless]
     public function seatDetails(string $seatId): ?array
     {
-        $seat = Seat::with('attendee.order')->find($seatId);
+        $seat = $this->event()->seats()->with('attendee.order')->where('code', $seatId)->first();
         $attendee = $seat?->attendee;
 
         if ($attendee === null) {
             return null;
         }
 
-        $layout = app(VenueLayout::class);
+        $layout = $this->event()->venueLayout();
 
         return [
-            'id' => $seat->id,
+            'id' => $seat->code,
             'label' => $layout->seatLabel($seat),
             'person' => trim("{$attendee->first_name} {$attendee->last_name}"),
             'buyer' => trim("{$attendee->order->first_name} {$attendee->order->last_name}"),
@@ -111,7 +113,7 @@ class Saalplan extends Page
             return;
         }
 
-        $result = app(AdminSeats::class)->block(array_map('strval', $seatIds), $blockReason, mb_substr((string) $note, 0, 255));
+        $result = app(AdminSeats::class)->block($this->event(), array_map('strval', $seatIds), $blockReason, mb_substr((string) $note, 0, 255));
 
         $this->capacityReminder("{$result['changed']} Plätze gesperrt", $result['skipped'] !== []
             ? count($result['skipped']).' belegte Plätze wurden ausgelassen.'
@@ -123,7 +125,7 @@ class Saalplan extends Page
      */
     public function unblockSeats(array $seatIds): void
     {
-        $changed = app(AdminSeats::class)->unblock(array_map('strval', $seatIds));
+        $changed = app(AdminSeats::class)->unblock($this->event(), array_map('strval', $seatIds));
 
         $this->capacityReminder("{$changed} Plätze freigegeben");
     }
@@ -131,7 +133,7 @@ class Saalplan extends Page
     public function moveSeat(string $from, string $to): bool
     {
         try {
-            app(AdminSeats::class)->move($from, $to);
+            app(AdminSeats::class)->move($this->event(), $from, $to);
         } catch (SeatConflict) {
             Notification::make()->title('Dieser Platz ist nicht frei')->danger()->send();
 
@@ -187,7 +189,7 @@ class Saalplan extends Page
             'name' => trim("{$order->first_name} {$order->last_name}"),
             'number' => $order->short_id,
             'needed' => $order->seatsNeeded(),
-            'seats' => $order->seats()->pluck('seats.id')->all(),
+            'seats' => $order->seats()->pluck('seats.code')->all(),
             'wheelchair' => $order->needs_wheelchair,
             'backUrl' => OrderResource::getUrl('view', ['record' => $order]),
         ];
@@ -195,14 +197,14 @@ class Saalplan extends Page
 
     private function orderBeingAssigned(): ?Order
     {
-        $order = $this->orderId === null ? null : Order::find($this->orderId);
+        $order = $this->orderId === null ? null : $this->event()->orders()->find($this->orderId);
 
         return $order?->status === OrderStatus::Active && $order->seatsNeeded() > 0 ? $order : null;
     }
 
     private function capacityReminder(string $title, ?string $detail = null): void
     {
-        $sellable = app(SeatStats::class)->snapshot()['sellable'];
+        $sellable = app(SeatStats::class)->snapshot($this->event())['sellable'];
 
         Notification::make()
             ->title($title)

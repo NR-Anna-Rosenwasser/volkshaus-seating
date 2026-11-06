@@ -2,35 +2,53 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\RunsPerEvent;
 use App\Enums\MailType;
+use App\Models\Event;
 use App\Models\Order;
 use App\Services\BuyerMailer;
-use App\Support\SelectionWindow;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('seating:send-reminders {--now : Remind everyone missing seats, without waiting for the configured days}')]
+#[Signature('seating:send-reminders {--event= : Only this event (slug)} {--now : Remind everyone missing seats, without waiting for the configured days. Needs --event}')]
 #[Description('Remind orders that have not chosen all their seats yet')]
 class SendReminders extends Command
 {
+    use RunsPerEvent;
+
     private const HOURS_AFTER_LINK = 24;
 
     /** Keeps a double click from reminding everyone twice. */
     private const HOURS_BETWEEN_MANUAL = 24;
 
-    public function handle(BuyerMailer $mailer, SelectionWindow $window): int
+    public function handle(BuyerMailer $mailer): int
     {
+        // Skipping the schedule is a decision about one event, never about all of them.
+        if ($this->option('now') && ! $this->option('event')) {
+            $this->error('--now needs --event.');
+
+            return self::FAILURE;
+        }
+
+        return $this->forEachEvent(fn (Event $event): int => $this->remind($event, $mailer));
+    }
+
+    private function remind(Event $event, BuyerMailer $mailer): int
+    {
+        $window = $event->window();
+
         if (! $window->isOpen()) {
             return self::SUCCESS;
         }
 
-        $due = collect(config('seating.reminder_offsets_days'))
+        $due = collect($event->reminder_offsets_days)
             ->filter(fn (int $days): bool => $window->deadline()->subDays($days)->isPast())
             ->count();
 
         // Someone who just got the link doesn't need a reminder on top.
-        $orders = Order::choosingForThemselves()
+        $orders = $event->orders()
+            ->choosingForThemselves()
             ->when(
                 $this->option('now'),
                 fn ($query) => $query->where(fn ($quiet) => $quiet

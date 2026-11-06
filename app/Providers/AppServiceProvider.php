@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use App\Models\Order;
 use App\Services\AdminAlert;
-use App\Support\VenueLayout;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Mail\SendQueuedMailable;
@@ -19,10 +18,7 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register any application services.
      */
-    public function register(): void
-    {
-        $this->app->singleton(VenueLayout::class, fn () => new VenueLayout(config('seating.seat_data_path')));
-    }
+    public function register(): void {}
 
     /**
      * Bootstrap any application services.

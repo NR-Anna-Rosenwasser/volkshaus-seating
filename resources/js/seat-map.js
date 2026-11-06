@@ -100,7 +100,7 @@ export default ({ url, refreshMs, sections, total }) => {
         },
 
         seatLabel(el) {
-            const [, row, number] = el.dataset.seat.split('-');
+            const { row, number } = el.dataset;
 
             return `${el.closest('[data-section-seats]').dataset.label} · Reihe ${row} · Platz ${number}`;
         },

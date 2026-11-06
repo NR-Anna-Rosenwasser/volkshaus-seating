@@ -3,10 +3,10 @@
     $sections = $layout->sections();
 @endphp
 
-<x-layouts.public title="Saalplan">
+<x-layouts.public title="Saalplan" :event="$event">
     <div
         x-data="seatMap({
-            url: @js(route('api.plan')),
+            url: @js(route('api.plan', $event)),
             refreshMs: {{ \App\Services\SeatPlan::CACHE_SECONDS * 1000 }},
             sections: @js($plan['sections']),
             total: @js($plan['total']),
@@ -14,7 +14,7 @@
         class="space-y-5"
     >
         <header>
-            <p class="inline-block rounded-full bg-tint px-3 py-1 text-xs font-medium text-ink">Volkshaus, Theatersaal</p>
+            <x-venue-chip :event="$event" />
             <h1 class="mt-3 text-3xl leading-tight font-bold tracking-tight text-ink">Saalplan</h1>
             <p class="mt-1 text-base leading-snug font-semibold text-ink tabular-nums">
                 Noch

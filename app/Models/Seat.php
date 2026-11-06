@@ -13,11 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['block_reason', 'block_note', 'attendee_id', 'assigned_at', 'assigned_by'])]
 class Seat extends Model
 {
-    public $incrementing = false;
-
     public $timestamps = false;
-
-    protected $keyType = 'string';
 
     protected function casts(): array
     {
@@ -32,6 +28,11 @@ class Seat extends Model
             'assigned_at' => 'datetime',
             'assigned_by' => AssignedBy::class,
         ];
+    }
+
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
     }
 
     public function attendee(): BelongsTo

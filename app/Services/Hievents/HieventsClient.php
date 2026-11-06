@@ -2,6 +2,7 @@
 
 namespace App\Services\Hievents;
 
+use App\Models\Event;
 use Generator;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -18,13 +19,13 @@ class HieventsClient
      *
      * @return Generator<int, array<string, mixed>>
      */
-    public function orders(): Generator
+    public function orders(Event $event): Generator
     {
         $page = 1;
 
         do {
             $response = $this->request()
-                ->get($this->eventPath('orders'), ['per_page' => self::PER_PAGE, 'page' => $page])
+                ->get($this->eventPath($event, 'orders'), ['per_page' => self::PER_PAGE, 'page' => $page])
                 ->throw()
                 ->json();
 
@@ -37,14 +38,14 @@ class HieventsClient
      *
      * @return array<string, mixed>
      */
-    public function order(int|string $id): array
+    public function order(Event $event, int|string $id): array
     {
-        return $this->request()->get($this->eventPath("orders/{$id}"))->throw()->json('data');
+        return $this->request()->get($this->eventPath($event, "orders/{$id}"))->throw()->json('data');
     }
 
-    private function eventPath(string $path): string
+    private function eventPath(Event $event, string $path): string
     {
-        return 'events/'.config('seating.event_id').'/'.$path;
+        return "events/{$event->hievents_event_id}/{$path}";
     }
 
     private function request(): PendingRequest

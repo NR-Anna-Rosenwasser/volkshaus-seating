@@ -1,4 +1,4 @@
-@props(['title'])
+@props(['title', 'event' => null])
 
 <!DOCTYPE html>
 <html lang="de-CH">
@@ -9,7 +9,7 @@
         <meta name="referrer" content="no-referrer">
         <meta name="robots" content="noindex">
         <meta name="csrf-token" content="{{ csrf_token() }}">
-        <title>{{ $title }} · Volkshaus Zürich</title>
+        <title>{{ $title }}{{ $event ? " · {$event->name}" : '' }}</title>
         @fonts
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>

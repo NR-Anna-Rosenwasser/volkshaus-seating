@@ -3,19 +3,27 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Event;
 use App\Services\SeatExports;
+use Filament\Facades\Filament;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExportController extends Controller
 {
-    public function __invoke(string $type, string $format, SeatExports $exports): Response
+    /**
+     * @param  string  $tenant  Filament resolves it. Type-hinting the model here
+     *                          would bind it first, and Filament then can't.
+     */
+    public function __invoke(string $tenant, string $type, string $format, SeatExports $exports): Response
     {
         abort_unless(in_array($type, SeatExports::TYPES, true), 404);
 
-        $export = $exports->make($type);
+        /** @var Event $event */
+        $event = Filament::getTenant();
+        $export = $exports->make($event, $type);
 
-        $response = $format === 'csv' ? $this->csv($type, $export) : response()->view('admin.export-print', $export);
+        $response = $format === 'csv' ? $this->csv("{$event->slug}-{$type}", $export) : response()->view('admin.export-print', $export);
 
         // Lists of names don't belong in any cache.
         $response->headers->set('Cache-Control', 'no-store, private');
@@ -26,7 +34,7 @@ class ExportController extends Controller
     /**
      * @param  array{title: string, headers: list<string>, rows: list<list<string>>}  $export
      */
-    private function csv(string $type, array $export): StreamedResponse
+    private function csv(string $name, array $export): StreamedResponse
     {
         return response()->streamDownload(function () use ($export): void {
             $file = fopen('php://output', 'w');
@@ -40,7 +48,7 @@ class ExportController extends Controller
             }
 
             fclose($file);
-        }, "{$type}.csv", ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, "{$name}.csv", ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     /**

@@ -2,7 +2,10 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Tenancy\EditEvent;
+use App\Filament\Pages\Tenancy\RegisterEvent;
 use App\Http\Controllers\Admin\ExportController;
+use App\Models\Event;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
@@ -32,7 +35,11 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->brandName('Volkshaus Sitzplätze')
+            ->brandName('Sitzplatzwahl')
+            ->tenant(Event::class, slugAttribute: 'slug', ownershipRelationship: 'event')
+            ->tenantRoutePrefix('event')
+            ->tenantRegistration(RegisterEvent::class)
+            ->tenantProfile(EditEvent::class)
             ->login()
             // Optional: the login is shared with the info desk on the night.
             ->profile()
@@ -43,13 +50,18 @@ class AdminPanelProvider extends PanelProvider
             ->font('Poppins', provider: LocalFontProvider::class)
             ->darkMode(false)
             ->navigationItems([
+                NavigationItem::make('Einstellungen')
+                    ->url(fn (): string => EditEvent::getUrl())
+                    ->icon(Heroicon::OutlinedCog6Tooth)
+                    ->isActiveWhen(fn (): bool => request()->routeIs(EditEvent::getRouteName()))
+                    ->sort(6),
                 NavigationItem::make('Warteschlange')
                     ->url('/horizon', shouldOpenInNewTab: true)
                     ->icon(Heroicon::OutlinedQueueList)
-                    ->sort(6),
+                    ->sort(7),
             ])
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => Blade::render("@fonts @vite(['resources/css/admin.css', 'resources/js/admin.js'])"))
-            ->authenticatedRoutes(function (): void {
+            ->authenticatedTenantRoutes(function (): void {
                 Route::get('exporte/{type}.{format}', ExportController::class)
                     ->whereIn('format', ['csv', 'html'])
                     ->name('exports');

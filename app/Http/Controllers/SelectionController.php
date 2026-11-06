@@ -4,17 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Enums\OrderStatus;
 use App\Exceptions\SeatConflict;
+use App\Models\Event;
 use App\Models\Order;
 use App\Models\Seat;
 use App\Services\BestSeats;
 use App\Services\SeatPlan;
 use App\Services\SeatSelection;
 use App\Support\SelectionWindow;
-use App\Support\VenueLayout;
-use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
@@ -23,29 +21,29 @@ class SelectionController extends Controller
     public function __construct(
         private readonly SeatPlan $plan,
         private readonly SeatSelection $selection,
-        private readonly SelectionWindow $window,
-        private readonly VenueLayout $layout,
     ) {}
 
     public function show(Order $order): View
     {
         $seats = $this->seatsOf($order);
+        $event = $order->event;
 
         return view('selection.show', [
+            'event' => $event,
             'order' => $order,
-            'layout' => $this->layout,
+            'layout' => $event->venueLayout(),
             'mode' => $this->mode($order),
             'needed' => $order->seatsNeeded(),
             'seats' => $seats,
-            'states' => $this->states($seats),
-            'deadline' => SelectionWindow::format($this->window->deadline()),
-            'opensAt' => SelectionWindow::format($this->window->opensAt()),
+            'states' => $this->states($event, $seats),
+            'deadline' => SelectionWindow::format($event->window()->deadline()),
+            'opensAt' => SelectionWindow::format($event->window()->opensAt()),
         ]);
     }
 
     public function availability(Order $order): JsonResponse
     {
-        return response()->json(['seats' => $this->states($this->seatsOf($order))]);
+        return response()->json(['seats' => $this->states($order->event, $this->seatsOf($order))]);
     }
 
     public function suggestion(Order $order, BestSeats $bestSeats): JsonResponse
@@ -53,7 +51,7 @@ class SelectionController extends Controller
         abort_unless($this->selection->mayChoose($order), 403);
 
         return response()->json([
-            'seats' => $bestSeats->find($order->seatsNeeded(), $this->seatsOf($order)->pluck('id')->all()),
+            'seats' => $bestSeats->find($order->event, $order->seatsNeeded(), $this->seatsOf($order)->pluck('code')->all()),
         ]);
     }
 
@@ -77,12 +75,15 @@ class SelectionController extends Controller
 
     public function ticket(Order $order): View
     {
+        $event = $order->event;
+
         return view('selection.ticket', [
+            'event' => $event,
             'order' => $order,
-            'layout' => $this->layout,
+            'layout' => $event->venueLayout(),
             'seats' => $this->seatsOf($order),
-            'eventDate' => SelectionWindow::format($this->date('seating.event_date')),
-            'doorsAt' => SelectionWindow::format($this->date('seating.doors_at')),
+            'eventDate' => SelectionWindow::format($event->starts_at),
+            'doorsAt' => SelectionWindow::format($event->doors_at),
         ]);
     }
 
@@ -92,8 +93,8 @@ class SelectionController extends Controller
             $order->status === OrderStatus::Cancelled => 'cancelled',
             $order->needs_wheelchair => 'wheelchair',
             $order->seatsNeeded() === 0 => 'none',
-            ! $this->window->hasStarted() => 'not-open',
-            ! $this->window->isOpen() => 'closed',
+            ! $order->event->window()->hasStarted() => 'not-open',
+            ! $order->event->window()->isOpen() => 'closed',
             default => 'choose',
         };
     }
@@ -104,9 +105,9 @@ class SelectionController extends Controller
      * @param  Collection<int, Seat>  $own
      * @return array<string, string>
      */
-    private function states(Collection $own): array
+    private function states(Event $event, Collection $own): array
     {
-        return [...$this->plan->fresh()['seats'], ...$own->mapWithKeys(fn (Seat $seat): array => [$seat->id => 'free'])->all()];
+        return [...$this->plan->fresh($event)['seats'], ...$own->mapWithKeys(fn (Seat $seat): array => [$seat->code => 'free'])->all()];
     }
 
     /**
@@ -115,12 +116,5 @@ class SelectionController extends Controller
     private function seatsOf(Order $order): Collection
     {
         return $order->seats()->orderBy('section')->orderBy('row')->orderBy('number')->get();
-    }
-
-    private function date(string $key): ?CarbonInterface
-    {
-        $value = config($key);
-
-        return $value ? Carbon::parse($value, config('app.timezone')) : null;
     }
 }

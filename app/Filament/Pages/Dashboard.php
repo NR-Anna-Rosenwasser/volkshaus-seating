@@ -3,8 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Console\Commands\Reconcile;
+use App\Filament\Concerns\UsesCurrentEvent;
 use App\Services\AutoAssign;
-use App\Support\SelectionWindow;
 use App\Support\StatusLog;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Artisan;
 
 class Dashboard extends BaseDashboard
 {
+    use UsesCurrentEvent;
+
     protected static ?string $title = 'Übersicht';
 
     protected static ?string $navigationLabel = 'Übersicht';
@@ -34,7 +36,7 @@ class Dashboard extends BaseDashboard
 
     private function autoAssignAction(): Action
     {
-        $deadlinePassed = app(SelectionWindow::class)->hasEnded();
+        $deadlinePassed = $this->event()->window()->hasEnded();
 
         return Action::make('autoAssign')
             ->label('Auto-Zuteilung')
@@ -42,7 +44,7 @@ class Dashboard extends BaseDashboard
             ->modalHeading('Auto-Zuteilung: Vorschau')
             ->modalWidth(Width::ThreeExtraLarge)
             ->modalContent(fn () => view('filament.partials.auto-assign-preview', [
-                'results' => app(AutoAssign::class)->preview(),
+                'results' => app(AutoAssign::class)->preview($this->event()),
                 'deadlinePassed' => $deadlinePassed,
             ]))
             ->modalCancelActionLabel('Schliessen')
@@ -51,7 +53,7 @@ class Dashboard extends BaseDashboard
             ->action(function () use ($deadlinePassed): void {
                 abort_unless($deadlinePassed, 403);
 
-                $results = app(AutoAssign::class)->run();
+                $results = app(AutoAssign::class)->run($this->event());
                 $seated = $results->filter->isSeated();
                 $unseated = $results->count() - $seated->count();
 
@@ -74,8 +76,8 @@ class Dashboard extends BaseDashboard
             ->modalDescription('Holt alle Bestellungen und korrigiert Abweichungen. Das kann einen Moment dauern.')
             ->modalSubmitActionLabel('Starten')
             ->action(function (): void {
-                Artisan::call('seating:reconcile');
-                $result = StatusLog::get(Reconcile::LAST_RESULT_KEY);
+                Artisan::call('seating:reconcile', ['--event' => $this->event()->slug]);
+                $result = StatusLog::get(Reconcile::lastResultKey($this->event()));
 
                 Notification::make()
                     ->title($result['failed'] ?? true ? 'Abgleich fehlgeschlagen' : 'Abgleich abgeschlossen')
@@ -93,9 +95,9 @@ class Dashboard extends BaseDashboard
             ->modalHeading('Erinnerungen jetzt senden?')
             ->modalDescription('Geht an alle Bestellungen, denen noch Plätze fehlen. Ausgenommen sind Bestellungen, die in den letzten 24 Stunden den Link oder eine Erinnerung bekommen haben. Die geplanten Erinnerungen bleiben bestehen.')
             ->modalSubmitActionLabel('Senden')
-            ->disabled(fn (): bool => ! app(SelectionWindow::class)->isOpen())
+            ->disabled(fn (): bool => ! $this->event()->window()->isOpen())
             ->action(function (): void {
-                Artisan::call('seating:send-reminders', ['--now' => true]);
+                Artisan::call('seating:send-reminders', ['--now' => true, '--event' => $this->event()->slug]);
 
                 Notification::make()
                     ->title((int) trim(Artisan::output()).' Erinnerungen versendet')
@@ -115,7 +117,7 @@ class Dashboard extends BaseDashboard
             ->modalDescription('Geht an alle Bestellungen mit Plätzen, die sie noch nicht bekommen haben. Das lässt sich nicht rückgängig machen.')
             ->modalSubmitActionLabel('Senden')
             ->action(function (): void {
-                Artisan::call('seating:send-final', ['--now' => true]);
+                Artisan::call('seating:send-final', ['--now' => true, '--event' => $this->event()->slug]);
 
                 Notification::make()
                     ->title((int) trim(Artisan::output()).' Schlussmails versendet')

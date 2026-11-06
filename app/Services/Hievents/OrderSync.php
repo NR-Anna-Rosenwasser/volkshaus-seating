@@ -10,9 +10,9 @@ use App\Enums\SyncResult;
 use App\Mail\WheelchairNotice;
 use App\Models\Attendee;
 use App\Models\AuditLog;
+use App\Models\Event;
 use App\Models\MailLog;
 use App\Models\Order;
-use App\Models\Seat;
 use App\Services\AdminAlert;
 use App\Services\AutoAssign;
 use App\Services\BuyerMailer;
@@ -41,26 +41,26 @@ class OrderSync
     /**
      * @param  array<string, mixed>  $payload  An OrderResource.
      */
-    public function syncOrder(array $payload): SyncResult
+    public function syncOrder(Event $event, array $payload): SyncResult
     {
-        if (! $this->isOurEvent($payload)) {
+        if (! $this->belongsTo($event, $payload)) {
             return SyncResult::Ignored;
         }
 
-        return $this->run((string) $payload['id'], fn (): SyncResult => $this->applyOrder($payload));
+        return $this->run($event, (string) $payload['id'], fn (): SyncResult => $this->applyOrder($event, $payload));
     }
 
     /**
      * @param  array<string, mixed>  $payload  An AttendeeResource.
      */
-    public function syncAttendee(array $payload): SyncResult
+    public function syncAttendee(Event $event, array $payload): SyncResult
     {
-        if (! $this->isOurEvent($payload)) {
+        if (! $this->belongsTo($event, $payload)) {
             return SyncResult::Ignored;
         }
 
-        return $this->run((string) $payload['order_id'], function () use ($payload): SyncResult {
-            $order = Order::where('hievents_order_id', (string) $payload['order_id'])->first();
+        return $this->run($event, (string) $payload['order_id'], function () use ($event, $payload): SyncResult {
+            $order = $event->orders()->where('hievents_order_id', (string) $payload['order_id'])->first();
 
             // Unknown means unpaid or not there yet. The order's own event will bring it in.
             if ($order === null) {
@@ -77,16 +77,16 @@ class OrderSync
     /**
      * @param  callable(): SyncResult  $work
      */
-    private function run(string $hieventsOrderId, callable $work): SyncResult
+    private function run(Event $event, string $hieventsOrderId, callable $work): SyncResult
     {
-        if (config('seating.seated_product_ids') === []) {
-            throw new RuntimeException('SEATED_PRODUCT_IDS is empty, so no attendee would get a seat.');
+        if ($event->seated_product_ids === []) {
+            throw new RuntimeException("Event {$event->slug} has no seated products, so no attendee would get a seat.");
         }
 
         $this->notices = [];
 
-        $result = DB::transaction(function () use ($hieventsOrderId, $work): SyncResult {
-            Order::lockByHieventsId($hieventsOrderId);
+        $result = DB::transaction(function () use ($event, $hieventsOrderId, $work): SyncResult {
+            Order::lockByHieventsId($event->id, $hieventsOrderId);
 
             return $work();
         });
@@ -95,7 +95,7 @@ class OrderSync
             $this->sendNotice($notice['order'], $notice['type']);
         }
 
-        $order = Order::where('hievents_order_id', $hieventsOrderId)->first();
+        $order = $event->orders()->where('hievents_order_id', $hieventsOrderId)->first();
 
         if ($order !== null) {
             $this->autoAssign->seatIfLate($order);
@@ -107,9 +107,9 @@ class OrderSync
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function applyOrder(array $payload): SyncResult
+    private function applyOrder(Event $event, array $payload): SyncResult
     {
-        $order = Order::where('hievents_order_id', (string) $payload['id'])->first();
+        $order = $event->orders()->where('hievents_order_id', (string) $payload['id'])->first();
         $cancelled = $payload['status'] === 'CANCELLED';
 
         if ($order === null && $payload['status'] !== 'COMPLETED') {
@@ -123,6 +123,7 @@ class OrderSync
 
         $created = $order === null;
         $order ??= new Order([
+            'event_id' => $event->id,
             'hievents_order_id' => (string) $payload['id'],
             // Never used as a link: the link email issues a fresh token.
             'token_hash' => hash('sha256', Str::random(64)),
@@ -142,7 +143,7 @@ class OrderSync
 
         // The order lists leave answers out, so absence says nothing.
         if (is_array($payload['question_answers'] ?? null)) {
-            $order->needs_wheelchair = $this->askedForWheelchair($payload['question_answers']);
+            $order->needs_wheelchair = $this->askedForWheelchair($event, $payload['question_answers']);
         }
 
         $changed = $order->isDirty();
@@ -153,7 +154,7 @@ class OrderSync
         }
 
         if ($cancelled) {
-            $changed = $this->cancelAttendees($order->attendees()->where('status', AttendeeStatus::Active)->get()) || $changed;
+            $changed = $this->cancelAttendees($order, $order->attendees()->where('status', AttendeeStatus::Active)->get()) || $changed;
         }
 
         $changed = $this->syncWheelchairRequest($order) || $changed;
@@ -171,15 +172,14 @@ class OrderSync
      */
     private function applyAttendee(Order $order, array $payload): bool
     {
-        $attendee = Attendee::firstOrNew(['hievents_attendee_id' => (string) $payload['id']]);
+        $attendee = Attendee::firstOrNew(['order_id' => $order->id, 'hievents_attendee_id' => (string) $payload['id']]);
         $wasActive = $attendee->exists && $attendee->status === AttendeeStatus::Active;
 
         $attendee->fill([
-            'order_id' => $order->id,
             'hievents_product_id' => (string) $payload['product_id'],
             'first_name' => $payload['first_name'] ?? null,
             'last_name' => $payload['last_name'] ?? null,
-            'needs_seat' => in_array((string) $payload['product_id'], config('seating.seated_product_ids'), true),
+            'needs_seat' => in_array((string) $payload['product_id'], $order->event->seated_product_ids, true),
             'status' => $payload['status'] === 'CANCELLED' ? AttendeeStatus::Cancelled : AttendeeStatus::Active,
         ]);
 
@@ -187,7 +187,7 @@ class OrderSync
         $attendee->save();
 
         if ($wasActive && $attendee->status === AttendeeStatus::Cancelled) {
-            $this->releaseSeats(collect([$attendee->id]));
+            $this->releaseSeats($order, collect([$attendee->id]));
             $this->notices[MailType::Confirmation->value] = ['order' => $order, 'type' => MailType::Confirmation];
         }
 
@@ -197,14 +197,14 @@ class OrderSync
     /**
      * @param  Collection<int, Attendee>  $attendees
      */
-    private function cancelAttendees(Collection $attendees): bool
+    private function cancelAttendees(Order $order, Collection $attendees): bool
     {
         if ($attendees->isEmpty()) {
             return false;
         }
 
         Attendee::whereKey($attendees->modelKeys())->update(['status' => AttendeeStatus::Cancelled]);
-        $this->releaseSeats($attendees->modelKeys());
+        $this->releaseSeats($order, $attendees->modelKeys());
 
         return true;
     }
@@ -212,9 +212,9 @@ class OrderSync
     /**
      * @param  Collection<int, int>|list<int>  $attendeeIds
      */
-    private function releaseSeats(Collection|array $attendeeIds): void
+    private function releaseSeats(Order $order, Collection|array $attendeeIds): void
     {
-        $seats = Seat::whereIn('attendee_id', $attendeeIds)->orderBy('id')->lockForUpdate()->get();
+        $seats = $order->event->seats()->whereIn('attendee_id', $attendeeIds)->orderBy('id')->lockForUpdate()->get();
 
         foreach ($seats as $seat) {
             AuditLog::create([
@@ -260,12 +260,13 @@ class OrderSync
             return;
         }
 
-        $recipients = config('seating.wheelchair_notify_emails');
+        $recipients = $order->event->wheelchair_notify_emails;
 
         if ($recipients === []) {
             $this->alert->send(
                 'Rollstuhlplatz: keine Empfänger',
-                "Bestellung {$order->short_id}: WHEELCHAIR_NOTIFY_EMAILS ist leer.",
+                "Bestellung {$order->short_id}: In den Event-Einstellungen fehlen die Empfänger für Rollstuhlplätze.",
+                $order->event,
             );
 
             return;
@@ -278,10 +279,10 @@ class OrderSync
     /**
      * @param  list<array<string, mixed>>  $answers
      */
-    private function askedForWheelchair(array $answers): bool
+    private function askedForWheelchair(Event $event, array $answers): bool
     {
         return collect($answers)->contains(
-            fn (array $answer): bool => in_array((string) $answer['question_id'], config('seating.wheelchair_question_ids'), true)
+            fn (array $answer): bool => in_array((string) $answer['question_id'], $event->wheelchair_question_ids, true)
                 && filled($answer['answer'] ?? null),
         );
     }
@@ -289,8 +290,8 @@ class OrderSync
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function isOurEvent(array $payload): bool
+    private function belongsTo(Event $event, array $payload): bool
     {
-        return (string) ($payload['event_id'] ?? '') === (string) config('seating.event_id');
+        return (string) ($payload['event_id'] ?? '') === $event->hievents_event_id;
     }
 }

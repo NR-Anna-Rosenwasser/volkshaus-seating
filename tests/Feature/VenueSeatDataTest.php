@@ -1,13 +1,12 @@
 <?php
 
 use App\Models\Seat;
-use Database\Seeders\SeatSeeder;
 
 $missing = fn () => ! is_file(config('seating.seat_data_path'));
 $reason = 'database/data/volkshaus-theatersaal-seats.json is not in the repo yet.';
 
 it('seeds the whole venue', function () {
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
 
     expect(Seat::count())->toBe(1139)
         ->and(Seat::distinct('id')->count('id'))->toBe(1139)
@@ -16,7 +15,7 @@ it('seeds the whole venue', function () {
 })->skip($missing, $reason);
 
 it('flags the seats the plan expects', function (string $flag, int $count) {
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
 
     expect(Seat::whereJsonContains('flags', $flag)->count())->toBe($count);
 })->with([
@@ -26,8 +25,8 @@ it('flags the seats the plan expects', function (string $flag, int $count) {
 ])->skip($missing, $reason);
 
 it('seeds the same result twice', function () {
-    $this->seed(SeatSeeder::class);
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
+    seatedEvent();
 
     expect(Seat::count())->toBe(1139)
         ->and(Seat::sellable()->count())->toBe(1115);

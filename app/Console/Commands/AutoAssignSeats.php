@@ -2,31 +2,31 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Seat;
+use App\Models\Event;
 use App\Services\AutoAssign;
 use App\Support\AutoAssignment;
-use App\Support\SelectionWindow;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 
-#[Signature('seating:auto-assign {--dry-run : Show the result without changing anything}')]
+#[Signature('seating:auto-assign {event : Event slug} {--dry-run : Show the result without changing anything}')]
 #[Description('Assign seats to everyone who has not chosen by the deadline')]
 class AutoAssignSeats extends Command
 {
-    public function handle(AutoAssign $autoAssign, SelectionWindow $window): int
+    public function handle(AutoAssign $autoAssign): int
     {
+        $event = Event::where('slug', $this->argument('event'))->firstOrFail();
         $dryRun = (bool) $this->option('dry-run');
 
         // Buyers were promised they can choose until the deadline.
-        if (! $dryRun && ! $window->hasEnded()) {
+        if (! $dryRun && ! $event->window()->hasEnded()) {
             $this->error('The selection deadline has not passed yet. Use --dry-run for a preview.');
 
             return self::FAILURE;
         }
 
-        $results = $dryRun ? $autoAssign->preview() : $autoAssign->run();
+        $results = $dryRun ? $autoAssign->preview($event) : $autoAssign->run($event);
 
         if ($dryRun) {
             $this->warn('Dry run: nothing was changed, and no mails were sent.');
@@ -38,7 +38,7 @@ class AutoAssignSeats extends Command
             ]));
         }
 
-        $this->summary($results);
+        $this->summary($event, $results);
 
         return self::SUCCESS;
     }
@@ -46,7 +46,7 @@ class AutoAssignSeats extends Command
     /**
      * @param  Collection<int, AutoAssignment>  $results
      */
-    private function summary(Collection $results): void
+    private function summary(Event $event, Collection $results): void
     {
         [$seated, $unseated] = $results->partition(fn (AutoAssignment $result): bool => $result->isSeated());
         $split = $seated->filter(fn (AutoAssignment $result): bool => $result->split);
@@ -56,7 +56,7 @@ class AutoAssignSeats extends Command
         $this->line("Unassignable: {$unseated->count()} orders, {$unseated->sum('missing')} tickets".$this->ids($unseated));
 
         // A preview has rolled back, so this count excludes what it would assign.
-        $free = Seat::sellable()->whereNull('attendee_id')->count() - ($this->option('dry-run') ? $seated->sum('missing') : 0);
+        $free = $event->seats()->sellable()->whereNull('attendee_id')->count() - ($this->option('dry-run') ? $seated->sum('missing') : 0);
         $this->line("Free seats left: {$free}.");
     }
 

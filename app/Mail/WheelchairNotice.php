@@ -25,8 +25,8 @@ class WheelchairNotice extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(subject: $this->cancelled()
-            ? "Rollstuhlplatz storniert: Bestellung {$this->order->short_id}"
-            : "Rollstuhlplatz gewünscht: Bestellung {$this->order->short_id}");
+            ? "Rollstuhlplatz storniert: {$this->order->event->name}, Bestellung {$this->order->short_id}"
+            : "Rollstuhlplatz gewünscht: {$this->order->event->name}, Bestellung {$this->order->short_id}");
     }
 
     public function content(): Content

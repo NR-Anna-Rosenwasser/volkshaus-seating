@@ -2,23 +2,30 @@
 
 namespace App\Support;
 
+use App\Models\Event;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Carbon;
 
 /**
- * When buyers may choose seats. Without configured dates selection stays
- * closed, so a forgotten setting can't leave it open forever.
+ * When buyers may choose seats. Without dates selection stays closed, so a
+ * forgotten setting can't leave it open forever.
  */
 class SelectionWindow
 {
+    private function __construct(private readonly Event $event) {}
+
+    public static function for(Event $event): self
+    {
+        return new self($event);
+    }
+
     public function opensAt(): ?CarbonInterface
     {
-        return $this->date('seating.selection_opens_at');
+        return $this->event->selection_opens_at;
     }
 
     public function deadline(): ?CarbonInterface
     {
-        return $this->date('seating.selection_deadline');
+        return $this->event->selection_deadline?->copy();
     }
 
     public function hasStarted(): bool
@@ -39,12 +46,5 @@ class SelectionWindow
     public static function format(?CarbonInterface $date): string
     {
         return $date?->locale('de')->isoFormat('dddd, D. MMMM YYYY, HH:mm').' Uhr';
-    }
-
-    private function date(string $key): ?CarbonInterface
-    {
-        $value = config($key);
-
-        return $value ? Carbon::parse($value, config('app.timezone')) : null;
     }
 }

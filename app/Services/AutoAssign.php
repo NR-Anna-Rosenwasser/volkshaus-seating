@@ -7,10 +7,10 @@ use App\Enums\AuditActor;
 use App\Enums\MailType;
 use App\Enums\OrderStatus;
 use App\Models\AuditLog;
+use App\Models\Event;
 use App\Models\Order;
 use App\Models\Seat;
 use App\Support\AutoAssignment;
-use App\Support\SelectionWindow;
 use App\Support\StatusLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -22,8 +22,6 @@ use Illuminate\Support\Facades\DB;
  */
 class AutoAssign
 {
-    public const LAST_RUN_KEY = 'seating.last-auto-assign';
-
     /** Another late order may take the suggested seats while we wait for the lock. */
     private const ATTEMPTS = 3;
 
@@ -33,18 +31,22 @@ class AutoAssign
         private readonly BestSeats $bestSeats,
         private readonly BuyerMailer $mailer,
         private readonly AdminAlert $alert,
-        private readonly SelectionWindow $window,
     ) {}
+
+    public static function lastRunKey(Event $event): string
+    {
+        return "seating.last-auto-assign.{$event->id}";
+    }
 
     /**
      * @return Collection<int, AutoAssignment>
      */
-    public function run(): Collection
+    public function run(Event $event): Collection
     {
-        StatusLog::put(self::LAST_RUN_KEY, now()->toIso8601String());
+        StatusLog::put(self::lastRunKey($event), now()->toIso8601String());
 
         $mailed = 0;
-        $results = $this->waitingOrders()->map(function (Order $order) use (&$mailed): AutoAssignment {
+        $results = $this->waitingOrders($event)->map(function (Order $order) use (&$mailed): AutoAssignment {
             $result = $this->assign($order, $mailed);
             $mailed += $result->isSeated() ? 1 : 0;
 
@@ -58,6 +60,7 @@ class AutoAssign
                 'Auto-Zuteilung: Bestellungen ohne Platz',
                 "{$unseated->count()} Bestellungen haben keinen Platz bekommen: "
                     .$unseated->map(fn (AutoAssignment $result): string => "{$result->order->short_id} ({$result->missing})")->implode(', ').'.',
+                $event,
             );
         }
 
@@ -70,12 +73,12 @@ class AutoAssign
      *
      * @return Collection<int, AutoAssignment>
      */
-    public function preview(): Collection
+    public function preview(Event $event): Collection
     {
         DB::beginTransaction();
 
         try {
-            return $this->waitingOrders()->map(fn (Order $order): AutoAssignment => $this->assign($order));
+            return $this->waitingOrders($event)->map(fn (Order $order): AutoAssignment => $this->assign($order));
         } finally {
             DB::rollBack();
         }
@@ -88,7 +91,7 @@ class AutoAssign
      */
     public function seatIfLate(Order $order): void
     {
-        if (! $this->window->hasEnded()
+        if (! $order->event->window()->hasEnded()
             || $order->status !== OrderStatus::Active
             || $order->needs_wheelchair
             || ! $order->attendees()->withoutSeat()->exists()) {
@@ -108,6 +111,7 @@ class AutoAssign
             $this->alert->send(
                 'Auto-Zuteilung: Bestellung ohne Platz',
                 "Bestellung {$order->short_id} braucht {$result->missing} Plätze, aber es gibt nicht genug freie Plätze.",
+                $order->event,
             );
         }
     }
@@ -117,9 +121,10 @@ class AutoAssign
      *
      * @return Collection<int, Order>
      */
-    public function waitingOrders(): Collection
+    public function waitingOrders(Event $event): Collection
     {
-        return Order::choosingForThemselves()
+        return $event->orders()
+            ->choosingForThemselves()
             ->missingSeats()
             ->withTicketCount()
             ->orderByDesc('tickets')
@@ -135,25 +140,26 @@ class AutoAssign
     private function assign(Order $order, ?int $mailPosition = null): AutoAssignment
     {
         return DB::transaction(function () use ($order, $mailPosition): AutoAssignment {
-            Order::lockByHieventsId($order->hievents_order_id);
+            $order->lock();
 
-            // Webhooks may have changed the order since the list was read.
+            // A sync may have changed the order since the list was read.
             $order->refresh();
+            $event = $order->event;
             $waiting = $order->attendees()->withoutSeat()->orderBy('id')->get();
-            $own = $order->seats()->pluck('seats.id')->all();
+            $own = $order->seats()->pluck('seats.code')->all();
 
             if ($order->status !== OrderStatus::Active || $waiting->isEmpty()) {
                 return new AutoAssignment($order, 0, [], false);
             }
 
             for ($attempt = 0; $attempt < self::ATTEMPTS; $attempt++) {
-                $seatIds = $this->bestSeats->find($waiting->count(), nearSeatIds: $own);
+                $codes = $this->bestSeats->find($event, $waiting->count(), nearCodes: $own);
 
-                if ($seatIds === []) {
+                if ($codes === []) {
                     break;
                 }
 
-                $seats = Seat::whereKey($seatIds)->orderBy('id')->lockForUpdate()->get();
+                $seats = $event->seats()->whereIn('code', $codes)->orderBy('id')->lockForUpdate()->get();
 
                 if ($seats->contains(fn (Seat $seat): bool => $seat->block_reason !== null || $seat->attendee_id !== null)) {
                     continue;
@@ -175,7 +181,7 @@ class AutoAssign
                     $this->mailer->send($order, MailType::AutoAssigned, $this->mailer->delayFor($mailPosition));
                 }
 
-                return new AutoAssignment($order, $waiting->count(), $seatIds, $this->isSplit($order));
+                return new AutoAssignment($order, $waiting->count(), $codes, $this->isSplit($order));
             }
 
             return new AutoAssignment($order, $waiting->count(), [], false);

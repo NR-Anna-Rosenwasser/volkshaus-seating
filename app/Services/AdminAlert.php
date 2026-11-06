@@ -3,21 +3,25 @@
 namespace App\Services;
 
 use App\Mail\AdminAlertMail;
+use App\Models\Event;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
- * Emails the people running the event. An alert must never break the work it
- * reports on, and must never contain personal data.
+ * Emails the people running the events. An alert must never break the work it
+ * reports on, and must never contain personal data. Alerts about one event
+ * name it, because the same list hears about all of them.
  */
 class AdminAlert
 {
     private const MAIL_FAILURES_KEY = 'seating.mail-failures';
 
-    public function send(string $title, string $message): void
+    public function send(string $title, string $message, ?Event $event = null): void
     {
+        $title = $event ? "{$event->name}: {$title}" : $title;
+
         Log::warning("{$title}: {$message}");
 
         $recipients = config('seating.admin_emails');

@@ -2,20 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Event;
 use App\Services\SeatPlan;
-use App\Support\VenueLayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
 
 class PlanController extends Controller
 {
-    public function show(SeatPlan $plan, VenueLayout $layout): View
+    public function show(Event $event, SeatPlan $plan): View
     {
-        return view('plan', ['plan' => $plan->snapshot(), 'layout' => $layout]);
+        return view('plan', ['event' => $event, 'plan' => $plan->snapshot($event), 'layout' => $event->venueLayout()]);
     }
 
-    public function data(SeatPlan $plan): JsonResponse
+    public function data(Event $event, SeatPlan $plan): JsonResponse
     {
-        return response()->json($plan->snapshot());
+        return response()->json($plan->snapshot($event));
     }
 }

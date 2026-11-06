@@ -13,7 +13,6 @@ use App\Models\User;
 use App\Services\AutoAssign;
 use App\Services\BestSeats;
 use App\Services\SeatStats;
-use Database\Seeders\SeatSeeder;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -25,14 +24,16 @@ use Illuminate\Support\Facades\Mail;
 it('gets a full house through the whole event', function () {
     Mail::fake();
     $this->withoutVite();
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
     $this->withoutMiddleware(ThrottleRequests::class);
     $this->actingAs(User::factory()->create());
 
+    setEvent([
+        'selection_opens_at' => '2026-12-20 10:00',
+        'selection_deadline' => '2027-01-25 23:59',
+        'starts_at' => '2027-02-01 20:00',
+    ]);
     config([
-        'seating.selection_opens_at' => '2026-12-20 10:00',
-        'seating.selection_deadline' => '2027-01-25 23:59',
-        'seating.event_date' => '2027-02-01 20:00',
         'seating.mail_per_second' => 5,
         'seating.admin_emails' => ['admin@example.ch'],
     ]);
@@ -40,7 +41,7 @@ it('gets a full house through the whole event', function () {
     mt_srand(2027);
 
     // Four press seats on top of the seeded blocks, so that blocks show up as a live change too.
-    Seat::whereKey(['P-3-1', 'P-3-2', 'P-3-3', 'P-3-4'])->update(['block_reason' => BlockReason::Press]);
+    Seat::whereIn('code', ['P-3-1', 'P-3-2', 'P-3-3', 'P-3-4'])->update(['block_reason' => BlockReason::Press]);
 
     $sizes = [];
     $bag = [...array_fill(0, 34, 1), ...array_fill(0, 40, 2), ...array_fill(0, 10, 3), ...array_fill(0, 11, 4), ...array_fill(0, 3, 5), ...array_fill(0, 2, 6)];
@@ -66,7 +67,7 @@ it('gets a full house through the whole event', function () {
 
     foreach ($choosing as $index => $order) {
         $count = $order->seatsNeeded();
-        $seats = app(BestSeats::class)->find($count);
+        $seats = app(BestSeats::class)->find(seatedEvent(), $count);
 
         // Every fifth buyer ignores the suggestion and picks a free stretch somewhere.
         if ($index % 5 === 0) {
@@ -93,18 +94,18 @@ it('gets a full house through the whole event', function () {
 
     $this->travelTo('2027-01-26 03:00:00');
 
-    $preview = app(AutoAssign::class)->preview()->map->seatIds->all();
+    $preview = app(AutoAssign::class)->preview(seatedEvent())->map->seatIds->all();
 
     // Monotonic: a laptop going to sleep mid-run must not count as slow code.
     $started = hrtime(true);
-    $results = app(AutoAssign::class)->run();
+    $results = app(AutoAssign::class)->run(seatedEvent());
     $seconds = (hrtime(true) - $started) / 1e9;
 
     expect($results->map->seatIds->all())->toBe($preview)
         ->and($seconds)->toBeLessThan(30);
 
     // Nobody without a seat except the wheelchair orders, which wait for a person.
-    $stats = app(SeatStats::class)->snapshot();
+    $stats = app(SeatStats::class)->snapshot(seatedEvent());
     $wheelchairTickets = Attendee::whereHas('order', fn ($query) => $query->where('needs_wheelchair', true)->where('status', OrderStatus::Active))
         ->where('status', AttendeeStatus::Active)->count();
 
@@ -123,13 +124,13 @@ it('gets a full house through the whole event', function () {
     expect($split)->toBeLessThan($results->count() / 4);
 
     // The lists for the night have every line.
-    $lines = fn (string $list): int => substr_count(trim($this->get("/admin/exporte/{$list}.csv")->assertOk()->streamedContent()), "\n");
+    $lines = fn (string $list): int => substr_count(trim($this->get("/admin/event/test/exporte/{$list}.csv")->assertOk()->streamedContent()), "\n");
 
     expect($lines('platzliste'))->toBe(Seat::whereNotNull('attendee_id')->count())
         ->and($lines('namensliste'))->toBe($stats['sold'])
         ->and($lines('sperrliste'))->toBe(array_sum($stats['blocked']));
 
-    $this->get('/admin/exporte/namensliste.html')->assertOk();
+    $this->get('/admin/event/test/exporte/namensliste.html')->assertOk();
 
     // One mail per order for everything that happened.
     expect(MailLog::where('type', MailType::AutoAssigned)->count())->toBe($results->count());

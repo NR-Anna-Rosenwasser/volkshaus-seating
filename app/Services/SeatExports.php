@@ -5,8 +5,8 @@ namespace App\Services;
 use App\Enums\AttendeeStatus;
 use App\Enums\OrderStatus;
 use App\Models\Attendee;
+use App\Models\Event;
 use App\Models\Seat;
-use App\Support\VenueLayout;
 use Illuminate\Support\Str;
 
 /**
@@ -16,32 +16,31 @@ class SeatExports
 {
     public const TYPES = ['platzliste', 'namensliste', 'sperrliste'];
 
-    public function __construct(private readonly VenueLayout $layout) {}
-
     /**
      * @return array{title: string, headers: list<string>, rows: list<list<string>>}
      */
-    public function make(string $type): array
+    public function make(Event $event, string $type): array
     {
         return match ($type) {
-            'platzliste' => $this->bySeat(),
-            'namensliste' => $this->byName(),
-            'sperrliste' => $this->blocked(),
+            'platzliste' => $this->bySeat($event),
+            'namensliste' => $this->byName($event),
+            'sperrliste' => $this->blocked($event),
         };
     }
 
     /**
      * @return array{title: string, headers: list<string>, rows: list<list<string>>}
      */
-    private function bySeat(): array
+    private function bySeat(Event $event): array
     {
-        $rows = Seat::query()
+        $layout = $event->venueLayout();
+        $rows = $event->seats()
             ->whereNotNull('attendee_id')
             ->with('attendee.order')
             ->get()
-            ->sortBy($this->seatOrder())
+            ->sortBy($this->seatOrder($event))
             ->map(fn (Seat $seat): array => [
-                $this->layout->sectionLabel($seat->section),
+                $layout->sectionLabel($seat->section),
                 (string) $seat->row,
                 (string) $seat->number,
                 (string) $seat->attendee->last_name,
@@ -60,19 +59,20 @@ class SeatExports
      *
      * @return array{title: string, headers: list<string>, rows: list<list<string>>}
      */
-    private function byName(): array
+    private function byName(Event $event): array
     {
+        $layout = $event->venueLayout();
         $rows = Attendee::query()
             ->where('status', AttendeeStatus::Active)
             ->where('needs_seat', true)
-            ->whereHas('order', fn ($query) => $query->where('status', OrderStatus::Active))
+            ->whereHas('order', fn ($query) => $query->where('event_id', $event->id)->where('status', OrderStatus::Active))
             ->with(['seat', 'order'])
             ->get()
             ->sortBy(fn (Attendee $attendee): string => Str::lower(Str::ascii("{$attendee->last_name} {$attendee->first_name}")))
             ->map(fn (Attendee $attendee): array => [
                 (string) $attendee->last_name,
                 (string) $attendee->first_name,
-                $attendee->seat ? $this->layout->seatLabel($attendee->seat) : 'Kein Platz',
+                $attendee->seat ? $layout->seatLabel($attendee->seat) : 'Kein Platz',
                 (string) $attendee->order->short_id,
                 $attendee->order->needs_wheelchair ? 'Rollstuhl' : '',
             ])
@@ -85,14 +85,15 @@ class SeatExports
     /**
      * @return array{title: string, headers: list<string>, rows: list<list<string>>}
      */
-    private function blocked(): array
+    private function blocked(Event $event): array
     {
-        $rows = Seat::query()
+        $layout = $event->venueLayout();
+        $rows = $event->seats()
             ->whereNotNull('block_reason')
             ->get()
-            ->sortBy($this->seatOrder())
+            ->sortBy($this->seatOrder($event))
             ->map(fn (Seat $seat): array => [
-                $this->layout->sectionLabel($seat->section),
+                $layout->sectionLabel($seat->section),
                 (string) $seat->row,
                 (string) $seat->number,
                 $seat->block_reason->label(),
@@ -104,9 +105,9 @@ class SeatExports
         return ['title' => 'Sperrliste', 'headers' => ['Bereich', 'Reihe', 'Platz', 'Grund', 'Notiz'], 'rows' => $rows];
     }
 
-    private function seatOrder(): \Closure
+    private function seatOrder(Event $event): \Closure
     {
-        $sections = array_flip(config('seating.section_preference'));
+        $sections = $event->venueLayout()->sectionRanks();
 
         return fn (Seat $seat): array => [$sections[$seat->section] ?? PHP_INT_MAX, $seat->row, $seat->number];
     }

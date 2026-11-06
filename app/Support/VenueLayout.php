@@ -5,8 +5,8 @@ namespace App\Support;
 use App\Models\Seat;
 
 /**
- * The static geometry of the hall, read from the seat data file. Who sits
- * where lives in the database; this class only knows how the room looks.
+ * The geometry of an event's hall, from the snapshot on the event. Who sits
+ * where lives in the seats table; this class only knows how the room looks.
  */
 final class VenueLayout
 {
@@ -20,14 +20,14 @@ final class VenueLayout
 
     private const SECTION_LABEL_GAP = 16;
 
-    /** @var array<string, mixed>|null */
-    private ?array $data = null;
-
-    public function __construct(private readonly string $path) {}
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function __construct(private readonly array $data) {}
 
     public function seatRadius(): float
     {
-        return (float) $this->data()['coordinate_system']['seat_radius'];
+        return (float) $this->data['coordinate_system']['seat_radius'];
     }
 
     /**
@@ -35,7 +35,7 @@ final class VenueLayout
      */
     public function stage(): array
     {
-        return $this->data()['stage'];
+        return $this->data['stage'];
     }
 
     /**
@@ -43,7 +43,7 @@ final class VenueLayout
      */
     public function pillars(): array
     {
-        return $this->data()['pillars'];
+        return $this->data['pillars'];
     }
 
     /**
@@ -54,7 +54,7 @@ final class VenueLayout
     public function seats(string $section): array
     {
         return array_values(array_filter(
-            $this->data()['seats'],
+            $this->data['seats'],
             fn (array $seat): bool => $seat['section'] === $section,
         ));
     }
@@ -90,7 +90,7 @@ final class VenueLayout
                 'labelY' => max($ys) + self::SECTION_LABEL_GAP,
                 'rowLabels' => $this->rowLabels($seats, $section['row_label_axis'] === 'vertical'),
             ];
-        }, $this->data()['sections']);
+        }, $this->data['sections']);
     }
 
     public function seatLabel(Seat $seat): string
@@ -100,7 +100,7 @@ final class VenueLayout
 
     public function sectionLabel(string $id): string
     {
-        return collect($this->data()['sections'])->firstWhere('id', $id)['label'] ?? $id;
+        return collect($this->data['sections'])->firstWhere('id', $id)['label'] ?? $id;
     }
 
     /**
@@ -110,9 +110,24 @@ final class VenueLayout
      */
     public function verticalSections(): array
     {
-        return collect($this->data()['sections'])
+        return collect($this->data['sections'])
             ->where('row_label_axis', 'vertical')
             ->pluck('id')
+            ->all();
+    }
+
+    /**
+     * Section ids with their rank, best first. Sections without a rank keep
+     * their order in the plan, behind the ranked ones.
+     *
+     * @return array<string, int>
+     */
+    public function sectionRanks(): array
+    {
+        return collect($this->data['sections'])
+            ->sortBy(fn (array $section): int => $section['rank'] ?? PHP_INT_MAX)
+            ->pluck('id')
+            ->flip()
             ->all();
     }
 
@@ -128,7 +143,7 @@ final class VenueLayout
      */
     public function viewBox(): array
     {
-        $seats = $this->data()['seats'];
+        $seats = $this->data['seats'];
         $stage = $this->stage();
 
         $x0 = min(min(array_column($seats, 'x')), $stage['x0']) - self::VIEW_PADDING_X;
@@ -164,13 +179,5 @@ final class VenueLayout
         }
 
         return $labels;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function data(): array
-    {
-        return $this->data ??= json_decode((string) file_get_contents($this->path), true, flags: JSON_THROW_ON_ERROR);
     }
 }

@@ -1,12 +1,12 @@
 @php
-    $contact = config('seating.contact_email');
+    $contact = $event->contact_email;
     $say = fn (string $solo, string $group): string => $needed === 1 ? $solo : $group;
 @endphp
 
-<x-layouts.public title="Platzwahl">
+<x-layouts.public title="Platzwahl" :event="$event">
     <div class="space-y-5">
         <header>
-            <p class="inline-block rounded-full bg-tint px-3 py-1 text-xs font-medium text-ink">Volkshaus, Theatersaal</p>
+            <x-venue-chip :event="$event" />
             <h1 class="mt-3 text-3xl leading-tight font-bold tracking-tight text-ink">{{ $say('Dein Platz', 'Eure Plätze') }}</h1>
             <p class="mt-1 text-base font-semibold text-ink">{{ $order->first_name }} {{ $order->last_name }}</p>
             @if ($mode === 'choose')
@@ -20,7 +20,7 @@
             <div
                 x-data="seatSelection({
                     needed: {{ $needed }},
-                    initial: @js($seats->pluck('id')),
+                    initial: @js($seats->pluck('code')),
                     url: @js(route('selection.availability', request()->route()->originalParameter('token'))),
                     suggestUrl: @js(route('selection.suggestion', request()->route()->originalParameter('token'))),
                     saveUrl: @js(route('selection.save', request()->route()->originalParameter('token'))),
@@ -33,6 +33,9 @@
             >
                 <button type="button" class="secondary-button w-full" x-bind:disabled="busy" x-on:click="suggest()">
                     {{ $say('Besten Platz für mich finden', 'Beste Plätze für uns finden') }}
+                </button>
+                <button type="button" class="primary-button w-full sticky top-4" x-bind:disabled="!canSave()" x-on:click="save()">
+                    {{ $say('Platz speichern', 'Plätze speichern') }}
                 </button>
                 <section class="-mx-4 overflow-hidden border-y border-line sm:mx-0 sm:rounded-xl sm:border" aria-label="Saalplan">
                     <x-seat-map-frame :layout="$layout" :states="$states" />
@@ -93,10 +96,6 @@
                     <p x-cloak x-show="saved" class="notice" role="status">
                         {{ $say('Dein Platz ist gespeichert.', 'Eure Plätze sind gespeichert.') }} <a class="font-semibold text-accent underline" x-bind:href="passUrl">Sitzplatz-Pass ansehen</a>
                     </p>
-
-                    <button type="button" class="primary-button w-full" x-bind:disabled="!canSave()" x-on:click="save()">
-                        {{ $say('Platz speichern', 'Plätze speichern') }}
-                    </button>
                 </section>
 
                 @if ($needed > 1)

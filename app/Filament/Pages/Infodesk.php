@@ -3,10 +3,10 @@
 namespace App\Filament\Pages;
 
 use App\Enums\OrderStatus;
+use App\Filament\Concerns\UsesCurrentEvent;
 use App\Models\Attendee;
 use App\Models\Order;
 use App\Models\Seat;
-use App\Support\VenueLayout;
 use BackedEnum;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Infodesk extends Page
 {
+    use UsesCurrentEvent;
+
     private const MIN_SEARCH = 2;
 
     private const MAX_RESULTS = 15;
@@ -55,9 +57,9 @@ class Infodesk extends Page
             ->orWhere('last_name', 'ilike', $like)
             ->orWhereRaw("concat(first_name, ' ', last_name) ilike ?", [$like]);
 
-        $layout = app(VenueLayout::class);
+        $layout = $this->event()->venueLayout();
 
-        return Order::query()
+        return $this->event()->orders()
             ->where(fn (Builder $query) => $query
                 ->where($named)
                 ->orWhere('short_id', 'ilike', $like)

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Event;
 use App\Models\WebhookEvent;
 use App\Services\AdminAlert;
 use App\Services\Hievents\OrderSync;
@@ -23,13 +24,16 @@ class ProcessWebhookEvent implements ShouldQueue
     {
         $event = WebhookEvent::findOrFail($this->webhookEventId);
         $payload = $event->payload['payload'] ?? [];
+        $target = Event::where('hievents_event_id', (string) ($payload['event_id'] ?? ''))->first();
 
         // Everything else, including attendee.created, is covered by the order events.
-        match ($event->event_type) {
-            'order.created', 'order.updated', 'order.marked_as_paid', 'order.refunded', 'order.cancelled' => $sync->syncOrder($payload),
-            'attendee.updated', 'attendee.cancelled' => $sync->syncAttendee($payload),
-            default => null,
-        };
+        if ($target !== null) {
+            match ($event->event_type) {
+                'order.created', 'order.updated', 'order.marked_as_paid', 'order.refunded', 'order.cancelled' => $sync->syncOrder($target, $payload),
+                'attendee.updated', 'attendee.cancelled' => $sync->syncAttendee($target, $payload),
+                default => null,
+            };
+        }
 
         $event->update(['processed_at' => now(), 'error' => null]);
     }

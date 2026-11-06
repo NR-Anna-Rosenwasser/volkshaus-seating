@@ -2,17 +2,17 @@
 
 use App\Models\Attendee;
 use App\Models\AuditLog;
+use App\Models\Event;
 use App\Models\MailLog;
 use App\Models\Order;
 use App\Models\Seat;
-use Database\Seeders\SeatSeeder;
 use Illuminate\Support\Facades\Process;
 
 // Row locks only mean something between real connections on committed data,
 // so this runs without the transaction the Feature tests are wrapped in.
 beforeEach(function () {
     $this->artisan('migrate:fresh');
-    $this->seed(SeatSeeder::class);
+    seatedEvent();
 });
 
 afterEach(function () {
@@ -22,6 +22,7 @@ afterEach(function () {
     Attendee::query()->delete();
     Order::query()->delete();
     Seat::query()->delete();
+    Event::query()->delete();
 });
 
 function saveInParallel(array $requests): array

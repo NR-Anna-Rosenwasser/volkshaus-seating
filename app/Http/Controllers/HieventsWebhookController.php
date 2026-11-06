@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessWebhookEvent;
+use App\Models\Event;
 use App\Models\WebhookEvent;
 use App\Support\DataRetention;
 use Illuminate\Http\Request;
@@ -10,7 +11,7 @@ use Illuminate\Http\Response;
 
 class HieventsWebhookController extends Controller
 {
-    public function __invoke(Request $request, DataRetention $retention): Response
+    public function __invoke(Request $request): Response
     {
         $body = $request->getContent();
 
@@ -20,8 +21,11 @@ class HieventsWebhookController extends Controller
 
         abort_unless(is_array($data), 400);
 
-        // Answered, so Hi.Events stops retrying, but nothing personal may come back in.
-        if ($retention->isOver()) {
+        // Answered, so Hi.Events stops retrying. Nothing personal may come in for an
+        // event that is gone, or for one we don't know: no purge would ever find it.
+        $target = Event::where('hievents_event_id', (string) ($data['payload']['event_id'] ?? ''))->first();
+
+        if ($target === null || DataRetention::for($target)->isOver()) {
             return response()->noContent(200);
         }
 
