@@ -34,6 +34,5 @@ it('lets the seeded admin into the panel outside local environments', function (
 
     app()->detectEnvironment(fn () => 'production');
 
-    $this->actingAs(User::first())->get('/admin')->assertRedirect('/admin/new');
-    $this->get('/admin/new')->assertOk();
+    $this->actingAs(User::first())->get('/admin')->assertOk();
 });

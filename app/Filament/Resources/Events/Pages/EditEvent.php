@@ -1,25 +1,29 @@
 <?php
 
-namespace App\Filament\Pages\Tenancy;
+namespace App\Filament\Resources\Events\Pages;
 
+use App\Filament\Resources\Events\EventResource;
+use BackedEnum;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
-use Filament\Pages\Tenancy\EditTenantProfile;
+use Filament\Resources\Pages\EditRecord;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 
-class EditEvent extends EditTenantProfile
+class EditEvent extends EditRecord
 {
     /** The privacy note promises deletion within this many days of the event. */
     private const PROMISED_DAYS = 45;
 
-    protected static ?string $slug = 'einstellungen';
+    protected static string $resource = EventResource::class;
 
-    public static function getLabel(): string
-    {
-        return 'Event-Einstellungen';
-    }
+    protected static ?string $title = 'Event-Einstellungen';
+
+    protected static ?string $navigationLabel = 'Einstellungen';
+
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCog6Tooth;
 
     public function form(Schema $schema): Schema
     {

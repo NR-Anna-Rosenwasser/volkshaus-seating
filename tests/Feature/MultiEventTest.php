@@ -1,10 +1,13 @@
 <?php
 
 use App\Enums\BlockReason;
-use App\Filament\Pages\Saalplan;
-use App\Filament\Pages\Tenancy\EditEvent;
-use App\Filament\Pages\Tenancy\RegisterEvent;
-use App\Filament\Resources\Orders\Pages\ListOrders;
+use App\Filament\Resources\Events\Pages\CreateEvent;
+use App\Filament\Resources\Events\Pages\EditEvent;
+use App\Filament\Resources\Events\Pages\EventInfodesk;
+use App\Filament\Resources\Events\Pages\EventSaalplan;
+use App\Filament\Resources\Events\Pages\ManageEventOrders;
+use App\Filament\Widgets\SeatOverview;
+use App\Filament\Widgets\UpcomingEvents;
 use App\Mail\AdminAlertMail;
 use App\Models\Attendee;
 use App\Models\Event;
@@ -18,7 +21,6 @@ use App\Services\SeatSelection;
 use App\Services\SeatStats;
 use App\Support\StatusLog;
 use Filament\Facades\Filament;
-use Filament\Http\Middleware\IdentifyTenant;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
@@ -35,14 +37,8 @@ beforeEach(function () {
 
 function orderIn(Event $event, int $tickets = 1, array $attributes = []): Order
 {
-    // Filament pins new records to the current tenant, which would undo the event given here.
-    $tenant = Filament::getTenant();
-    Filament::setTenant(null, isQuiet: true);
-
     $order = Order::factory()->create(['event_id' => $event->id, ...$attributes]);
     Attendee::factory()->count($tickets)->for($order)->create();
-
-    Filament::setTenant($tenant, isQuiet: true);
 
     return $order;
 }
@@ -190,67 +186,120 @@ describe('admin', function () {
     beforeEach(function () {
         $this->actingAs(User::factory()->create());
         Filament::setCurrentPanel('admin');
-        Filament::setTenant($this->first);
-        // A real request does this. The tenant scope on orders comes from here.
-        Filament::bootCurrentPanel();
     });
 
     it('lists only the orders of the current event', function () {
         $own = orderIn($this->first, attributes: ['short_id' => 'o_eigen']);
         $foreign = orderIn($this->second, attributes: ['short_id' => 'o_fremd']);
 
-        Livewire::test(ListOrders::class)->assertCanSeeTableRecords([$own])->assertCanNotSeeTableRecords([$foreign]);
+        Livewire::test(ManageEventOrders::class, ['record' => 'test'])->assertCanSeeTableRecords([$own])->assertCanNotSeeTableRecords([$foreign]);
 
-        $this->get('/admin/event/test/bestellungen')->assertOk()->assertSeeText('o_eigen')->assertDontSeeText('o_fremd');
-        $this->get('/admin/event/zweites/bestellungen')->assertOk()->assertSeeText('o_fremd')->assertDontSeeText('o_eigen');
+        $this->get('/admin/events/test/bestellungen')->assertOk()->assertSeeText('o_eigen')->assertDontSeeText('o_fremd');
+        $this->get('/admin/events/zweites/bestellungen')->assertOk()->assertSeeText('o_fremd')->assertDontSeeText('o_eigen');
     });
 
-    it('keeps the event on Livewire requests', function () {
-        expect(Livewire::getPersistentMiddleware())->toContain(IdentifyTenant::class);
+    it('keeps the event through a Livewire round trip', function () {
+        Livewire::test(EventSaalplan::class, ['record' => 'zweites'])
+            ->call('blockSeats', ['P-1-1'], BlockReason::Press->value)
+            ->assertHasNoErrors();
+
+        expect($this->first->seats()->where('code', 'P-1-1')->first()->block_reason)->toBeNull()
+            ->and($this->second->seats()->where('code', 'P-1-1')->first()->block_reason)->toBe(BlockReason::Press);
+    });
+
+    it('searches the infodesk of the current event only', function () {
+        orderIn($this->second, attributes: ['first_name' => 'Fremda', 'last_name' => 'Gast']);
+
+        Livewire::test(EventInfodesk::class, ['record' => 'test'])->set('search', 'Fremda')->assertSee('Niemand gefunden');
+        Livewire::test(EventInfodesk::class, ['record' => 'zweites'])->set('search', 'Fremda')->assertSee('Fremda Gast');
+    });
+
+    it('does not assign seats to an order of another event from the plan', function () {
+        $foreign = orderIn($this->second);
+
+        Livewire::withQueryParams(['bestellung' => $foreign->id])
+            ->test(EventSaalplan::class, ['record' => 'test'])
+            ->call('saveOrderSeats', ['P-1-1'])
+            ->assertReturned(false);
+
+        expect($foreign->seats()->count())->toBe(0);
+    });
+
+    it('shows the event\'s own numbers in its widget', function () {
+        orderIn($this->first, 3);
+
+        expect(Livewire::test(SeatOverview::class, ['record' => $this->first])->instance()->record->is($this->first))->toBeTrue();
+        expect(app(SeatStats::class)->snapshot($this->second)['sold'])->toBe(0);
+    });
+
+    it('lists every event on the overview', function () {
+        $this->get('/admin')->assertOk();
+
+        Livewire::test(UpcomingEvents::class)->loadTable()->assertSeeText($this->first->name)->assertSeeText($this->second->name);
+    });
+
+    it('finds orders of all events in the global search, and links to the right event', function () {
+        orderIn($this->second, attributes: ['short_id' => 'o_suche', 'first_name' => 'Rita', 'last_name' => 'Muster']);
+
+        $result = Filament::getGlobalSearchProvider()->getResults('o_suche')->getCategories()->flatten()->first();
+
+        expect($result->title)->toContain($this->second->name)
+            ->and($result->url)->toContain('/admin/events/zweites/bestellungen/');
     });
 
     it('does not open an order of another event through the URL', function () {
         $foreign = orderIn($this->second);
 
-        $this->get("/admin/event/test/bestellungen/{$foreign->id}")->assertNotFound();
-        $this->get("/admin/event/test/saalplan?bestellung={$foreign->id}")->assertOk()->assertDontSeeText('Plätze für');
+        $this->get("/admin/events/test/bestellungen/{$foreign->id}")->assertNotFound();
+        $this->get("/admin/events/test/saalplan?bestellung={$foreign->id}")->assertOk()->assertDontSeeText('Plätze für');
     });
 
     it('does not reveal who sits on the same seat in another event', function () {
         app(AdminSeats::class)->assign(orderIn($this->second), ['P-1-1']);
 
-        Livewire::test(Saalplan::class)->call('seatDetails', 'P-1-1')->assertReturned(null);
+        Livewire::test(EventSaalplan::class, ['record' => 'test'])->call('seatDetails', 'P-1-1')->assertReturned(null);
     });
 
     it('exports the current event, named after it', function () {
         $order = orderIn($this->second, attributes: ['short_id' => 'o_fremd']);
         app(AdminSeats::class)->assign($order, ['P-1-1']);
 
-        $response = $this->get('/admin/event/test/exporte/platzliste.csv')->assertOk();
+        $response = $this->get('/admin/events/test/exporte/platzliste.csv')->assertOk();
 
         expect($response->streamedContent())->not->toContain('o_fremd')
             ->and($response->headers->get('content-disposition'))->toContain('test-platzliste.csv');
     });
 
-    it('switches events by URL', function () {
-        $this->get('/admin/event/test')->assertOk();
-        $this->get('/admin/event/zweites')->assertOk();
-        $this->get('/admin/event/gibt-es-nicht')->assertNotFound();
+    it('heads the event page with its name and shows no form', function () {
+        $this->get('/admin/events/test')
+            ->assertOk()
+            ->assertSeeText($this->first->name)
+            ->assertDontSeeText('ansehen')
+            ->assertDontSeeText('Event-ID in Hi.Events');
     });
 
-    it('creates an event with its seats from the registration page', function () {
-        Filament::setTenant(null);
+    it('finds events by URL', function () {
+        $this->get('/admin/events/test')->assertOk()->assertSeeText($this->first->name);
+        $this->get('/admin/events/zweites')->assertOk()->assertSeeText($this->second->name);
+        $this->get('/admin/events/gibt-es-nicht')->assertNotFound();
+    });
 
-        Livewire::test(RegisterEvent::class)
+    it('creates an event with its seats', function () {
+        Livewire::test(CreateEvent::class)
             ->fillForm(['name' => 'Drittes Event', 'hievents_event_id' => '333', 'venue_name' => 'Volkshaus'])
-            ->call('register')
-            ->assertHasNoFormErrors();
+            ->call('create')
+            ->assertHasNoFormErrors()
+            ->assertRedirect('/admin/events/drittes-event');
 
         expect(Event::where('slug', 'drittes-event')->sole()->seats()->count())->toBe(1139);
     });
 
+    it('keeps the name of the create page free', function () {
+        expect(Event::factory()->create(['name' => 'Neu'])->slug)->toBe('event-neu');
+    });
+
     it('saves the event settings', function () {
-        Livewire::test(EditEvent::class)
+        Livewire::test(EditEvent::class, ['record' => 'test'])
             ->fillForm([
                 'contact_email' => 'neu@example.ch',
                 'selection_opens_at' => '2027-01-01 10:00',
@@ -269,18 +318,18 @@ describe('admin', function () {
     });
 
     it('refuses a deadline before the opening', function () {
-        Livewire::test(EditEvent::class)
+        Livewire::test(EditEvent::class, ['record' => 'test'])
             ->fillForm(['selection_opens_at' => '2027-01-10 10:00', 'selection_deadline' => '2027-01-01 10:00'])
             ->call('save')
             ->assertHasFormErrors(['selection_deadline']);
     });
 
     it('links the settings in the navigation', function () {
-        $this->get('/admin/event/test')->assertOk()->assertSee('/admin/event/test/einstellungen');
+        $this->get('/admin/events/test')->assertOk()->assertSee('/admin/events/test/einstellungen')->assertSee('/admin/events/test/saalplan');
     });
 
     it('keeps the deletion promise in the event settings', function () {
-        Livewire::test(EditEvent::class)
+        Livewire::test(EditEvent::class, ['record' => 'test'])
             ->fillForm(['purge_after_days' => 40])
             ->call('save')
             ->assertHasFormErrors(['purge_after_days']);

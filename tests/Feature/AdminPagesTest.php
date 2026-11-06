@@ -2,11 +2,12 @@
 
 use App\Enums\BlockReason;
 use App\Enums\MailType;
-use App\Filament\Pages\Dashboard;
-use App\Filament\Pages\Infodesk;
-use App\Filament\Pages\Saalplan;
+use App\Filament\Resources\Events\EventResource;
+use App\Filament\Resources\Events\Pages\EventInfodesk;
+use App\Filament\Resources\Events\Pages\EventSaalplan;
+use App\Filament\Resources\Events\Pages\ManageEventOrders;
+use App\Filament\Resources\Events\Pages\ViewEvent;
 use App\Filament\Resources\Orders\OrderResource;
-use App\Filament\Resources\Orders\Pages\ListOrders;
 use App\Filament\Resources\Orders\Pages\ViewOrder;
 use App\Filament\Widgets\SeatOverview;
 use App\Filament\Widgets\SystemStatus;
@@ -30,7 +31,6 @@ beforeEach(function () {
     seatedEvent();
     $this->actingAs(User::factory()->create());
     Filament::setCurrentPanel('admin');
-    Filament::setTenant(seatedEvent());
 
     setEvent([
         'selection_opens_at' => '2026-12-20 10:00',
@@ -53,7 +53,7 @@ it('sends guests to the login', function (string $path) {
     auth()->logout();
 
     $this->get($path)->assertRedirect('/admin/login');
-})->with(['/admin/event/test', '/admin/event/test/saalplan', '/admin/event/test/bestellungen', '/admin/event/test/infodesk', '/admin/event/test/exporte', '/admin/event/test/exporte/platzliste.csv']);
+})->with(['/admin/events/test', '/admin/events/test/saalplan', '/admin/events/test/bestellungen', '/admin/events/test/infodesk', '/admin/events/test/exporte', '/admin/events/test/exporte/platzliste.csv']);
 
 it('runs the login check on Livewire requests too', function () {
     $auth = collect(Filament::getPanel('admin')->getAuthMiddleware());
@@ -64,13 +64,16 @@ it('runs the login check on Livewire requests too', function () {
 it('shows every admin page in Swiss German', function (string $path, string $text) {
     $this->get($path)->assertOk()->assertSeeText($text)->assertDontSee('ß');
 })->with([
-    ['/admin/event/test', 'Übersicht'],
-    ['/admin/event/test/saalplan', 'verkaufbare Plätze'],
-    ['/admin/event/test/bestellungen', 'Bestellungen'],
-    ['/admin/event/test/infodesk', 'Infodesk'],
-    ['/admin/event/test/exporte', 'Namensliste'],
+    ['/admin', 'Events'],
+    ['/admin/events', 'Neues Event'],
+    ['/admin/events/neu', 'Neues Event'],
+    ['/admin/events/test', 'Übersicht'],
+    ['/admin/events/test/saalplan', 'verkaufbare Plätze'],
+    ['/admin/events/test/bestellungen', 'Bestellungen'],
+    ['/admin/events/test/infodesk', 'Infodesk'],
+    ['/admin/events/test/exporte', 'Namensliste'],
     ['/admin/profile', 'E-Mail'],
-    ['/admin/event/test/einstellungen', 'Frist'],
+    ['/admin/events/test/einstellungen', 'Frist'],
 ]);
 
 it('shows the login in Swiss German', function () {
@@ -103,7 +106,7 @@ it('finds orders in the global search', function () {
 it('shows the seat numbers on the dashboard', function () {
     adminOrder(2);
 
-    Livewire::test(SeatOverview::class)->assertSee('Verkauft')->assertSee('Ohne Platz');
+    Livewire::test(SeatOverview::class, ['record' => seatedEvent()])->assertSee('Verkauft')->assertSee('Ohne Platz');
     Livewire::test(SystemStatus::class)->assertSee('Letzter Webhook')->assertSee('Noch nie');
 });
 
@@ -111,13 +114,13 @@ it('warns on the dashboard when there are more tickets than seats', function () 
     Seat::whereNull('block_reason')->update(['block_reason' => BlockReason::Other]);
     adminOrder(2);
 
-    Livewire::test(SeatOverview::class)->assertSee('2 Tickets mehr als Plätze');
+    Livewire::test(SeatOverview::class, ['record' => seatedEvent()])->assertSee('2 Tickets mehr als Plätze');
 });
 
 it('previews auto-assign and runs it from the dashboard', function () {
     $order = adminOrder(2);
 
-    Livewire::test(Dashboard::class)
+    Livewire::test(ViewEvent::class, ['record' => 'test'])
         ->mountAction('autoAssign')
         ->assertMountedActionModalSee(['Noch ist nichts geändert', 'Rita Muster'])
         ->callMountedAction()
@@ -130,7 +133,7 @@ it('offers no way to run auto-assign before the deadline', function () {
     $this->travelTo('2027-01-10 12:00:00');
     $order = adminOrder(2);
 
-    Livewire::test(Dashboard::class)
+    Livewire::test(ViewEvent::class, ['record' => 'test'])
         ->mountAction('autoAssign')
         ->assertMountedActionModalSee('Die Frist läuft noch')
         ->callMountedAction()
@@ -144,8 +147,8 @@ it('sends reminders from the dashboard, not twice in a row', function () {
     $order = adminOrder(2);
     MailLog::create(['order_id' => $order->id, 'type' => MailType::Link, 'sent_at' => '2026-12-21 12:00:00']);
 
-    Livewire::test(Dashboard::class)->callAction('reminders')->assertNotified('1 Erinnerungen versendet');
-    Livewire::test(Dashboard::class)->callAction('reminders')->assertNotified('0 Erinnerungen versendet');
+    Livewire::test(ViewEvent::class, ['record' => 'test'])->callAction('reminders')->assertNotified('1 Erinnerungen versendet');
+    Livewire::test(ViewEvent::class, ['record' => 'test'])->callAction('reminders')->assertNotified('0 Erinnerungen versendet');
 
     Mail::assertQueuedCount(1);
     expect($order->refresh()->reminders_sent)->toBe(0);
@@ -155,7 +158,7 @@ it('sends the final mail from the dashboard', function () {
     $order = adminOrder(1);
     app(AdminSeats::class)->assign($order, ['P-1-1']);
 
-    Livewire::test(Dashboard::class)->callAction('finalMail')->assertNotified('1 Schlussmails versendet');
+    Livewire::test(ViewEvent::class, ['record' => 'test'])->callAction('finalMail')->assertNotified('1 Schlussmails versendet');
 
     expect(MailLog::where(['order_id' => $order->id, 'type' => MailType::Final])->count())->toBe(1);
 });
@@ -168,7 +171,7 @@ it('reports a failed reconciliation', function () {
     ]);
     Http::fake(['*' => Http::response([], 500)]);
 
-    Livewire::test(Dashboard::class)->callAction('reconcile')->assertNotified('Abgleich fehlgeschlagen');
+    Livewire::test(ViewEvent::class, ['record' => 'test'])->callAction('reconcile')->assertNotified('Abgleich fehlgeschlagen');
 });
 
 it('finds orders by name, email and number', function () {
@@ -176,7 +179,7 @@ it('finds orders by name, email and number', function () {
     $beat = adminOrder(1, ['first_name' => 'Beat', 'last_name' => 'Keller', 'email' => 'beat@example.ch', 'short_id' => 'o_beat']);
 
     foreach (['Keller', 'beat@example.ch', 'o_beat'] as $search) {
-        Livewire::test(ListOrders::class)
+        Livewire::test(ManageEventOrders::class, ['record' => 'test'])
             ->searchTable($search)
             ->assertCanSeeTableRecords([$beat])
             ->assertCanNotSeeTableRecords([$rita]);
@@ -188,7 +191,7 @@ it('filters orders that are missing seats', function () {
     $seated = adminOrder(1);
     app(AdminSeats::class)->assign($seated, ['P-1-1']);
 
-    Livewire::test(ListOrders::class)
+    Livewire::test(ManageEventOrders::class, ['record' => 'test'])
         ->filterTable('missing')
         ->assertCanSeeTableRecords([$missing])
         ->assertCanNotSeeTableRecords([$seated]);
@@ -198,7 +201,7 @@ it('shows seats and tickets on the order page', function () {
     $order = adminOrder(2);
     app(AdminSeats::class)->assign($order, ['P-1-1']);
 
-    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])
+    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey(), 'parentRecord' => seatedEvent()])
         ->assertSee('Parterre · Reihe 1 · Platz 1')
         ->assertSee('kein Platz');
 });
@@ -206,21 +209,21 @@ it('shows seats and tickets on the order page', function () {
 it('links from the order page to the plan', function () {
     $order = adminOrder(2);
 
-    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])
-        ->assertActionHasUrl('assign', Saalplan::getUrl(['bestellung' => $order->id]));
+    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey(), 'parentRecord' => seatedEvent()])
+        ->assertActionHasUrl('assign', EventResource::getUrl('saalplan', ['record' => seatedEvent(), 'bestellung' => $order->id]));
 });
 
 it('offers no seats for an order that needs none', function () {
     $order = adminOrder(1, ['status' => 'cancelled']);
 
-    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])->assertActionHidden('assign');
+    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey(), 'parentRecord' => seatedEvent()])->assertActionHidden('assign');
 });
 
 it('opens the plan for one order, with its seats', function () {
     $order = adminOrder(2, ['short_id' => 'o_rita']);
     app(AdminSeats::class)->assign($order, ['P-1-1']);
 
-    $this->get("/admin/event/test/saalplan?bestellung={$order->id}")
+    $this->get("/admin/events/test/saalplan?bestellung={$order->id}")
         ->assertOk()
         ->assertSeeText('Plätze für Rita Muster')
         ->assertSeeText('o_rita')
@@ -231,14 +234,14 @@ it('opens the plan for one order, with its seats', function () {
 it('says wheelchair orders get no automatic mail on the plan', function () {
     $order = adminOrder(1, ['needs_wheelchair' => true]);
 
-    $this->get("/admin/event/test/saalplan?bestellung={$order->id}")->assertSeeText('keine automatische E-Mail');
+    $this->get("/admin/events/test/saalplan?bestellung={$order->id}")->assertSeeText('keine automatische E-Mail');
 });
 
 it('shows the normal plan for an unknown or cancelled order', function () {
     $cancelled = adminOrder(1, ['status' => 'cancelled']);
 
     foreach ([$cancelled->id, 999999] as $id) {
-        $this->get("/admin/event/test/saalplan?bestellung={$id}")->assertOk()->assertDontSeeText('Plätze für')->assertSeeText('Bereich wählen');
+        $this->get("/admin/events/test/saalplan?bestellung={$id}")->assertOk()->assertDontSeeText('Plätze für')->assertSeeText('Bereich wählen');
     }
 });
 
@@ -246,11 +249,11 @@ it('saves seats from the plan and returns to the order', function () {
     $order = adminOrder(2);
 
     Livewire::withQueryParams(['bestellung' => $order->id])
-        ->test(Saalplan::class)
+        ->test(EventSaalplan::class, ['record' => 'test'])
         ->call('saveOrderSeats', ['P-1-1', 'P-1-2'])
         ->assertReturned(true)
         ->assertNotified('Plätze gespeichert')
-        ->assertRedirect(OrderResource::getUrl('view', ['record' => $order]));
+        ->assertRedirect(OrderResource::viewUrl($order));
 
     expect($order->seats()->count())->toBe(2);
 });
@@ -260,7 +263,7 @@ it('explains when seats from the plan are gone', function () {
     app(AdminSeats::class)->assign(adminOrder(1), ['P-1-1']);
 
     Livewire::withQueryParams(['bestellung' => $order->id])
-        ->test(Saalplan::class)
+        ->test(EventSaalplan::class, ['record' => 'test'])
         ->call('saveOrderSeats', ['P-1-1'])
         ->assertReturned(false)
         ->assertNotified('Mindestens ein Platz wurde gerade vergeben oder gesperrt');
@@ -269,7 +272,7 @@ it('explains when seats from the plan are gone', function () {
 });
 
 it('saves nothing without an order', function () {
-    Livewire::test(Saalplan::class)->call('saveOrderSeats', ['P-1-1'])->assertReturned(false);
+    Livewire::test(EventSaalplan::class, ['record' => 'test'])->call('saveOrderSeats', ['P-1-1'])->assertReturned(false);
 
     expect(Seat::whereNotNull('attendee_id')->count())->toBe(0);
 });
@@ -278,7 +281,7 @@ it('issues a new link and retires the old one', function () {
     $order = adminOrder(1);
     $old = $order->issueToken();
 
-    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])
+    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey(), 'parentRecord' => seatedEvent()])
         ->callAction('newLink')
         ->assertNotified('Neuer Link kopiert');
 
@@ -292,7 +295,7 @@ it('resends a confirmation', function () {
     $confirmations = fn (): int => Mail::queued(SeatMail::class, fn (SeatMail $mail) => $mail->type === MailType::Confirmation)->count();
     $before = $confirmations();
 
-    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey()])->callAction('resendConfirmation');
+    Livewire::test(ViewOrder::class, ['record' => $order->getRouteKey(), 'parentRecord' => seatedEvent()])->callAction('resendConfirmation');
 
     expect($confirmations())->toBe($before + 1);
 });
@@ -304,7 +307,7 @@ it('cannot create orders by hand', function () {
 it('blocks seats on the plan with a capacity reminder', function () {
     $sellable = Seat::sellable()->count();
 
-    Livewire::test(Saalplan::class)
+    Livewire::test(EventSaalplan::class, ['record' => 'test'])
         ->call('blockSeats', ['P-1-1', 'P-1-2'], 'press', 'Radio')
         ->assertNotified(Notification::make()->title('2 Plätze gesperrt')->body('Kapazität in Hi.Events anpassen: neu '.($sellable - 2).'.')->warning()->seconds(8));
 
@@ -314,7 +317,7 @@ it('blocks seats on the plan with a capacity reminder', function () {
 it('releases seats on the plan', function () {
     Seat::where('code', 'P-1-1')->update(['block_reason' => BlockReason::Vip]);
 
-    Livewire::test(Saalplan::class)->call('unblockSeats', ['P-1-1'])->assertNotified();
+    Livewire::test(EventSaalplan::class, ['record' => 'test'])->call('unblockSeats', ['P-1-1'])->assertNotified();
 
     expect(seat('P-1-1')->block_reason)->toBeNull();
 });
@@ -322,7 +325,7 @@ it('releases seats on the plan', function () {
 it('gives the plan seat states and block reasons', function () {
     Seat::where('code', 'P-1-1')->update(['block_reason' => BlockReason::Vip]);
 
-    $data = (new Saalplan)->mapData();
+    $data = Livewire::test(EventSaalplan::class, ['record' => 'test'])->instance()->mapData();
 
     expect($data['seats']['P-1-1'])->toBe('blocked')
         ->and($data['reasons']['P-1-1'])->toBe('vip')
@@ -333,14 +336,14 @@ it('shows who sits on a seat and moves them', function () {
     $order = adminOrder(1, ['short_id' => 'o_rita']);
     app(AdminSeats::class)->assign($order, ['P-1-1']);
 
-    $details = (new Saalplan)->seatDetails('P-1-1');
+    $details = Livewire::test(EventSaalplan::class, ['record' => 'test'])->instance()->seatDetails('P-1-1');
 
     expect($details['person'])->toBe('Rita Muster')
         ->and($details['orderNumber'])->toBe('o_rita')
         ->and($details['group'])->toBe(['Parterre · Reihe 1 · Platz 1'])
-        ->and((new Saalplan)->seatDetails('P-1-2'))->toBeNull();
+        ->and(Livewire::test(EventSaalplan::class, ['record' => 'test'])->instance()->seatDetails('P-1-2'))->toBeNull();
 
-    Livewire::test(Saalplan::class)->call('moveSeat', 'P-1-1', 'P-5-5')->assertReturned(true);
+    Livewire::test(EventSaalplan::class, ['record' => 'test'])->call('moveSeat', 'P-1-1', 'P-5-5')->assertReturned(true);
 
     expect(seat('P-5-5')->attendee_id)->not->toBeNull();
 });
@@ -349,7 +352,7 @@ it('reports a failed move', function () {
     app(AdminSeats::class)->assign(adminOrder(1), ['P-1-1']);
     app(AdminSeats::class)->assign(adminOrder(1), ['P-1-2']);
 
-    Livewire::test(Saalplan::class)
+    Livewire::test(EventSaalplan::class, ['record' => 'test'])
         ->call('moveSeat', 'P-1-1', 'P-1-2')
         ->assertReturned(false)
         ->assertNotified('Dieser Platz ist nicht frei');
@@ -363,7 +366,7 @@ it('finds people at the info desk by name, fellow guest and number', function ()
     $other->attendees()->update(['first_name' => 'Beat', 'last_name' => 'Keller']);
 
     foreach (['muster', 'Hans Gast', 'o_rita', 'rita mus'] as $search) {
-        Livewire::test(Infodesk::class)
+        Livewire::test(EventInfodesk::class, ['record' => 'test'])
             ->set('search', $search)
             ->assertSee('Parterre · Reihe 3 · Platz 3')
             ->assertDontSee('Beat Keller');
@@ -375,22 +378,22 @@ it('flags missing seats, cancelled orders and wheelchair needs at the info desk'
     adminOrder(1, ['last_name' => 'Storno', 'status' => 'cancelled']);
     adminOrder(1, ['last_name' => 'Rollator', 'needs_wheelchair' => true]);
 
-    Livewire::test(Infodesk::class)->set('search', 'Ohneplatz')->assertSee('2 Tickets ohne Platz');
-    Livewire::test(Infodesk::class)->set('search', 'Storno')->assertSee('storniert');
-    Livewire::test(Infodesk::class)->set('search', 'Rollator')->assertSee('Rollstuhlplatz');
-    Livewire::test(Infodesk::class)->set('search', 'Niemand')->assertSee('Niemand gefunden');
+    Livewire::test(EventInfodesk::class, ['record' => 'test'])->set('search', 'Ohneplatz')->assertSee('2 Tickets ohne Platz');
+    Livewire::test(EventInfodesk::class, ['record' => 'test'])->set('search', 'Storno')->assertSee('storniert');
+    Livewire::test(EventInfodesk::class, ['record' => 'test'])->set('search', 'Rollator')->assertSee('Rollstuhlplatz');
+    Livewire::test(EventInfodesk::class, ['record' => 'test'])->set('search', 'Niemand')->assertSee('Niemand gefunden');
 });
 
 it('treats % and _ as plain characters in the search', function () {
     adminOrder(1);
 
-    Livewire::test(Infodesk::class)->set('search', '%%')->assertSee('Niemand gefunden');
+    Livewire::test(EventInfodesk::class, ['record' => 'test'])->set('search', '%%')->assertSee('Niemand gefunden');
 });
 
 it('waits for two characters before searching', function () {
     adminOrder(1);
 
-    Livewire::test(Infodesk::class)->set('search', 'M')->assertDontSee('Rita')->assertDontSee('Niemand gefunden');
+    Livewire::test(EventInfodesk::class, ['record' => 'test'])->set('search', 'M')->assertDontSee('Rita')->assertDontSee('Niemand gefunden');
 });
 
 describe('exports', function () {
@@ -410,7 +413,7 @@ describe('exports', function () {
     });
 
     it('lists who sits where, by seat', function () {
-        $csv = $this->get('/admin/event/test/exporte/platzliste.csv')->assertOk()->assertHeader('content-type', 'text/csv; charset=UTF-8')->streamedContent();
+        $csv = $this->get('/admin/events/test/exporte/platzliste.csv')->assertOk()->assertHeader('content-type', 'text/csv; charset=UTF-8')->streamedContent();
 
         expect($csv)->toStartWith("\xEF\xBB\xBFBereich;Reihe;Platz;Nachname")
             ->not->toContain('Keiner')
@@ -418,7 +421,7 @@ describe('exports', function () {
     });
 
     it('lists everyone by last name, with or without a seat', function () {
-        $csv = $this->get('/admin/event/test/exporte/namensliste.csv')->assertOk()->streamedContent();
+        $csv = $this->get('/admin/events/test/exporte/namensliste.csv')->assertOk()->streamedContent();
 
         expect(strpos($csv, 'Ärni'))->toBeLessThan(strpos($csv, 'Keiner'))
             ->and(strpos($csv, 'Keiner'))->toBeLessThan(strpos($csv, 'Zürcher'))
@@ -426,13 +429,13 @@ describe('exports', function () {
     });
 
     it('lists blocked seats with their reason', function () {
-        $csv = $this->get('/admin/event/test/exporte/sperrliste.csv')->assertOk()->streamedContent();
+        $csv = $this->get('/admin/events/test/exporte/sperrliste.csv')->assertOk()->streamedContent();
 
         expect($csv)->toContain('Parterre;3;1;Presse;Radio');
     });
 
     it('prints the same lists, and caches none', function (string $type, string $text) {
-        $this->get("/admin/event/test/exporte/{$type}.html")
+        $this->get("/admin/events/test/exporte/{$type}.html")
             ->assertOk()
             ->assertSeeText($text)
             ->assertHeader('cache-control', 'no-store, private');
@@ -442,11 +445,11 @@ describe('exports', function () {
         $order = adminOrder(1);
         $order->attendees()->first()->update(['first_name' => 'Evil', 'last_name' => '=HYPERLINK("http://bad")']);
 
-        expect($this->get('/admin/event/test/exporte/namensliste.csv')->streamedContent())->toContain("'=HYPERLINK");
+        expect($this->get('/admin/events/test/exporte/namensliste.csv')->streamedContent())->toContain("'=HYPERLINK");
     });
 
     it('rejects unknown exports', function () {
-        $this->get('/admin/event/test/exporte/geheim.csv')->assertNotFound();
-        $this->get('/admin/event/test/exporte/platzliste.pdf')->assertNotFound();
+        $this->get('/admin/events/test/exporte/geheim.csv')->assertNotFound();
+        $this->get('/admin/events/test/exporte/platzliste.pdf')->assertNotFound();
     });
 });

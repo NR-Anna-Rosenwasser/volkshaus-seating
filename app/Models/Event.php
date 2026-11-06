@@ -62,6 +62,8 @@ class Event extends Model
     private static function freeSlug(string $name): string
     {
         $base = Str::slug($name) ?: 'event';
+        // /admin/events/neu is the page for creating an event.
+        $base = $base === 'neu' ? 'event-neu' : $base;
         $slug = $base;
 
         for ($suffix = 2; static::where('slug', $slug)->exists(); $suffix++) {

@@ -3,14 +3,15 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\BlockReason;
-use App\Filament\Concerns\UsesCurrentEvent;
+use App\Models\Event;
 use App\Services\SeatStats;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class SeatOverview extends StatsOverviewWidget
 {
-    use UsesCurrentEvent;
+    /** The event page passes its record. */
+    public ?Event $record = null;
 
     protected static ?int $sort = 1;
 
@@ -23,7 +24,7 @@ class SeatOverview extends StatsOverviewWidget
 
     protected function getStats(): array
     {
-        $stats = app(SeatStats::class)->snapshot($this->event());
+        $stats = app(SeatStats::class)->snapshot($this->record);
         $blocked = collect($stats['blocked'])
             ->map(fn (int $seats, string $reason): string => BlockReason::from($reason)->label().": {$seats}")
             ->implode(', ');

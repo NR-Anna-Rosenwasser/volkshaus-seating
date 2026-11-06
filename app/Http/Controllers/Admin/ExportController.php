@@ -5,22 +5,15 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Services\SeatExports;
-use Filament\Facades\Filament;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExportController extends Controller
 {
-    /**
-     * @param  string  $tenant  Filament resolves it. Type-hinting the model here
-     *                          would bind it first, and Filament then can't.
-     */
-    public function __invoke(string $tenant, string $type, string $format, SeatExports $exports): Response
+    public function __invoke(Event $event, string $type, string $format, SeatExports $exports): Response
     {
         abort_unless(in_array($type, SeatExports::TYPES, true), 404);
 
-        /** @var Event $event */
-        $event = Filament::getTenant();
         $export = $exports->make($event, $type);
 
         $response = $format === 'csv' ? $this->csv("{$event->slug}-{$type}", $export) : response()->view('admin.export-print', $export);

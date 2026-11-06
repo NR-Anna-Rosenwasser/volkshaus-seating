@@ -4,8 +4,7 @@ namespace App\Filament\Resources\Orders;
 
 use App\Enums\MailType;
 use App\Enums\OrderStatus;
-use App\Filament\Pages\Saalplan;
-use App\Filament\Resources\Orders\Pages\ListOrders;
+use App\Filament\Resources\Events\EventResource;
 use App\Filament\Resources\Orders\Pages\ViewOrder;
 use App\Models\Attendee;
 use App\Models\MailLog;
@@ -36,6 +35,8 @@ class OrderResource extends Resource
 {
     protected static ?string $model = Order::class;
 
+    protected static ?string $parentResource = EventResource::class;
+
     protected static ?string $modelLabel = 'Bestellung';
 
     protected static ?string $pluralModelLabel = 'Bestellungen';
@@ -46,16 +47,28 @@ class OrderResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTicket;
 
-    protected static ?int $navigationSort = 3;
-
     public static function getGloballySearchableAttributes(): array
     {
         return ['short_id', 'first_name', 'last_name', 'email'];
     }
 
+    /**
+     * Filament would guess the event from the current request, which only
+     * works on pages below that event.
+     */
+    public static function viewUrl(Order $order): string
+    {
+        return static::getUrl('view', ['event' => $order->event, 'record' => $order]);
+    }
+
+    public static function getGlobalSearchResultUrl(Model $record): string
+    {
+        return static::viewUrl($record);
+    }
+
     public static function getGlobalSearchResultTitle(Model $record): string
     {
-        return "{$record->first_name} {$record->last_name} ({$record->short_id})";
+        return "{$record->first_name} {$record->last_name} ({$record->short_id}, {$record->event->name})";
     }
 
     public static function table(Table $table): Table
@@ -93,7 +106,7 @@ class OrderResource extends Resource
             ])
             ->recordActions([
                 Action::make('open')->label('Öffnen')->icon(Heroicon::OutlinedEye)
-                    ->url(fn (Order $record): string => static::getUrl('view', ['record' => $record])),
+                    ->url(fn (Order $record): string => static::viewUrl($record)),
             ]);
     }
 
@@ -137,7 +150,7 @@ class OrderResource extends Resource
                 ->label('Plätze im Saalplan zuweisen')
                 ->icon(Heroicon::OutlinedMap)
                 ->visible(fn (Order $record): bool => $record->status === OrderStatus::Active && $record->seatsNeeded() > 0)
-                ->url(fn (Order $record): string => Saalplan::getUrl(['bestellung' => $record->id])),
+                ->url(fn (Order $record): string => EventResource::getUrl('saalplan', ['record' => $record->event, 'bestellung' => $record->id])),
             Action::make('newLink')
                 ->label('Neuer Link')
                 ->icon(Heroicon::OutlinedLink)
@@ -174,7 +187,6 @@ class OrderResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => ListOrders::route('/'),
             'view' => ViewOrder::route('/{record}'),
         ];
     }

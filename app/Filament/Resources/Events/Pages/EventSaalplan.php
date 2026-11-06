@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Filament\Pages;
+namespace App\Filament\Resources\Events\Pages;
 
 use App\Enums\BlockReason;
 use App\Enums\OrderStatus;
 use App\Exceptions\SeatConflict;
-use App\Filament\Concerns\UsesCurrentEvent;
+use App\Filament\Resources\Events\Pages\Concerns\ShowsOneEvent;
 use App\Filament\Resources\Orders\OrderResource;
 use App\Models\Order;
 use App\Models\Seat;
@@ -13,15 +13,15 @@ use App\Services\AdminSeats;
 use App\Services\SeatStats;
 use BackedEnum;
 use Filament\Notifications\Notification;
-use Filament\Pages\Page;
+use Filament\Resources\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Url;
 
-class Saalplan extends Page
+class EventSaalplan extends Page
 {
-    use UsesCurrentEvent;
+    use ShowsOneEvent;
 
     /** Long enough to read, short enough not to pile up over the map. */
     private const REMINDER_SECONDS = 8;
@@ -32,9 +32,7 @@ class Saalplan extends Page
 
     protected static ?string $title = 'Saalplan';
 
-    protected static ?string $slug = 'saalplan';
-
-    protected static ?int $navigationSort = 2;
+    protected static ?string $navigationLabel = 'Saalplan';
 
     /** Set when the page is opened to choose seats for one order. */
     #[Url(as: 'bestellung')]
@@ -95,7 +93,7 @@ class Saalplan extends Page
             'person' => trim("{$attendee->first_name} {$attendee->last_name}"),
             'buyer' => trim("{$attendee->order->first_name} {$attendee->order->last_name}"),
             'orderNumber' => $attendee->order->short_id,
-            'orderUrl' => OrderResource::getUrl('view', ['record' => $attendee->order]),
+            'orderUrl' => OrderResource::viewUrl($attendee->order),
             'group' => $attendee->order->seats()->orderBy('section')->orderBy('row')->orderBy('number')->get()
                 ->map(fn (Seat $groupSeat): string => $layout->seatLabel($groupSeat))
                 ->all(),
@@ -173,7 +171,7 @@ class Saalplan extends Page
         }
 
         Notification::make()->title('Plätze gespeichert')->success()->send();
-        $this->redirect(OrderResource::getUrl('view', ['record' => $order]));
+        $this->redirect(OrderResource::viewUrl($order));
 
         return true;
     }
@@ -191,7 +189,7 @@ class Saalplan extends Page
             'needed' => $order->seatsNeeded(),
             'seats' => $order->seats()->pluck('seats.code')->all(),
             'wheelchair' => $order->needs_wheelchair,
-            'backUrl' => OrderResource::getUrl('view', ['record' => $order]),
+            'backUrl' => OrderResource::viewUrl($order),
         ];
     }
 

@@ -124,13 +124,13 @@ it('gets a full house through the whole event', function () {
     expect($split)->toBeLessThan($results->count() / 4);
 
     // The lists for the night have every line.
-    $lines = fn (string $list): int => substr_count(trim($this->get("/admin/event/test/exporte/{$list}.csv")->assertOk()->streamedContent()), "\n");
+    $lines = fn (string $list): int => substr_count(trim($this->get("/admin/events/test/exporte/{$list}.csv")->assertOk()->streamedContent()), "\n");
 
     expect($lines('platzliste'))->toBe(Seat::whereNotNull('attendee_id')->count())
         ->and($lines('namensliste'))->toBe($stats['sold'])
         ->and($lines('sperrliste'))->toBe(array_sum($stats['blocked']));
 
-    $this->get('/admin/event/test/exporte/namensliste.html')->assertOk();
+    $this->get('/admin/events/test/exporte/namensliste.html')->assertOk();
 
     // One mail per order for everything that happened.
     expect(MailLog::where('type', MailType::AutoAssigned)->count())->toBe($results->count());

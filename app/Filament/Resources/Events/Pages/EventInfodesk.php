@@ -1,20 +1,20 @@
 <?php
 
-namespace App\Filament\Pages;
+namespace App\Filament\Resources\Events\Pages;
 
 use App\Enums\OrderStatus;
-use App\Filament\Concerns\UsesCurrentEvent;
+use App\Filament\Resources\Events\Pages\Concerns\ShowsOneEvent;
 use App\Models\Attendee;
 use App\Models\Order;
 use App\Models\Seat;
 use BackedEnum;
-use Filament\Pages\Page;
+use Filament\Resources\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
 
-class Infodesk extends Page
+class EventInfodesk extends Page
 {
-    use UsesCurrentEvent;
+    use ShowsOneEvent;
 
     private const MIN_SEARCH = 2;
 
@@ -26,9 +26,7 @@ class Infodesk extends Page
 
     protected static ?string $title = 'Infodesk';
 
-    protected static ?string $slug = 'infodesk';
-
-    protected static ?int $navigationSort = 4;
+    protected static ?string $navigationLabel = 'Infodesk';
 
     public string $search = '';
 

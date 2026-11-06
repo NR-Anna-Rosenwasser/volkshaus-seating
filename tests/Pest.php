@@ -3,7 +3,6 @@
 use App\Models\Event;
 use App\Models\Seat;
 use App\Services\SeatImporter;
-use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,11 +43,7 @@ function hallFor(Event $event): Event
  */
 function setEvent(array $attributes): Event
 {
-    $event = tap(seatedEvent())->update($attributes);
-
-    Filament::getTenant()?->refresh();
-
-    return $event;
+    return tap(seatedEvent())->update($attributes);
 }
 
 function seat(string $code): Seat

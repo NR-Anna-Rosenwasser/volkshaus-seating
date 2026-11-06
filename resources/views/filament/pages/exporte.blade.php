@@ -12,8 +12,8 @@
                         <p>{{ $description }}</p>
                     </div>
                     <div class="export-list__actions">
-                        <x-filament::button tag="a" href="{{ route('filament.admin.exports', ['tenant' => filament()->getTenant(), 'type' => $type, 'format' => 'csv']) }}">CSV</x-filament::button>
-                        <x-filament::button tag="a" color="gray" target="_blank" href="{{ route('filament.admin.exports', ['tenant' => filament()->getTenant(), 'type' => $type, 'format' => 'html']) }}">Drucken</x-filament::button>
+                        <x-filament::button tag="a" href="{{ route('filament.admin.exports', ['event' => $event, 'type' => $type, 'format' => 'csv']) }}">CSV</x-filament::button>
+                        <x-filament::button tag="a" color="gray" target="_blank" href="{{ route('filament.admin.exports', ['event' => $event, 'type' => $type, 'format' => 'html']) }}">Drucken</x-filament::button>
                     </div>
                 </div>
             </x-filament::section>
