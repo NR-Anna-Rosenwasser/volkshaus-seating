@@ -90,9 +90,6 @@
                         <p x-cloak x-show="selected.length > 1 && !together() && !hasSingleGap()" class="notice">Eure Plätze liegen nicht nebeneinander.</p>
                     @endif
                     <p x-cloak x-show="hasObstructed()" class="notice">{{ $say('Dieser Platz hat eine Sichtbehinderung.', 'Mindestens ein Platz hat eine Sichtbehinderung.') }}</p>
-                    <p x-cloak x-show="saved" class="notice" role="status">
-                        {{ $say('Dein Platz ist gespeichert.', 'Eure Plätze sind gespeichert.') }} <a class="font-semibold text-accent underline" x-bind:href="passUrl">Sitzplatz-Pass ansehen</a>
-                    </p>
 
                     <button type="button" class="primary-button w-full" x-bind:disabled="!canSave()" x-on:click="save()">
                         {{ $say('Platz speichern', 'Plätze speichern') }}

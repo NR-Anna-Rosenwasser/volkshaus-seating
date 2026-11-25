@@ -72,6 +72,9 @@ class SelectionController extends Controller
             return response()->json(['conflicts' => $conflict->seatIds], 409);
         }
 
+        // The page then sends the buyer to the pass, which confirms it.
+        $request->session()->flash('seats_saved', true);
+
         return response()->json(['seats' => $seatIds]);
     }
 
@@ -81,6 +84,10 @@ class SelectionController extends Controller
             'order' => $order,
             'layout' => $this->layout,
             'seats' => $this->seatsOf($order),
+            'justSaved' => session('seats_saved', false),
+            'canChange' => $this->selection->mayChoose($order),
+            'deadline' => SelectionWindow::format($this->window->deadline()),
+            'summaryUrl' => $order->hieventsSummaryUrl(),
             'eventDate' => SelectionWindow::format($this->date('seating.event_date')),
             'doorsAt' => SelectionWindow::format($this->date('seating.doors_at')),
         ]);

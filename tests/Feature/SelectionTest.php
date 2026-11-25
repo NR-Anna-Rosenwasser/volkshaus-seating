@@ -318,10 +318,48 @@ it('shows the seat pass', function () {
         ->assertSeeText('Hässig am Mittwoch')
         ->assertSeeText('Parterre · Reihe 12 · Platz 7')
         ->assertSeeText('Montag, 1. Februar 2027, 20:00 Uhr')
-        ->assertSeeText('Einlass nur mit dem Ticket von Hi.Events. Diese Seite zeigt nur euren Sitzplatz.');
+        ->assertSeeText('Einlass nur mit den Tickets von Hi.Events. Diese Seite zeigt nur eure Sitzplätze.');
 
     expect(substr_count($response->getContent(), 'is-selected'))->toBe(2);
 });
+
+it('confirms the save on the pass, once', function () {
+    saveSeats(['P-12-7', 'P-12-8'])->assertOk();
+
+    $this->get("/s/{$this->token}/ticket")
+        ->assertSeeText('Eure Plätze sind gespeichert.')
+        ->assertSeeText('Ihr könnt sie bis')
+        ->assertSee('href="'.route('selection.show', $this->token).'"', false)
+        ->assertSeeText('Plätze ändern');
+
+    $this->get("/s/{$this->token}/ticket")->assertDontSeeText('gespeichert');
+});
+
+it('offers no change once the deadline has passed', function () {
+    saveSeats(['P-12-7', 'P-12-8']);
+    config(['seating.selection_deadline' => now()->subMinute()->toDateTimeString()]);
+
+    $this->get("/s/{$this->token}/ticket")->assertDontSeeText('Plätze ändern');
+});
+
+it('links to the order on Hi.Events', function () {
+    config(['seating.hievents.public_url' => 'https://tickets.example.ch/', 'seating.event_id' => '7']);
+    $this->order->update(['short_id' => 'o_BGehitjCbl46p']);
+
+    $this->get("/s/{$this->token}/ticket")
+        ->assertSee('href="https://tickets.example.ch/checkout/7/o_BGehitjCbl46p/summary"', false)
+        ->assertSeeText('Bestellung bei Hi.Events ansehen');
+});
+
+it('hides the Hi.Events link without the order number or address', function (array $config, ?string $shortId) {
+    config(['seating.hievents.public_url' => 'https://tickets.example.ch', 'seating.event_id' => '7', ...$config]);
+    $this->order->update(['short_id' => $shortId]);
+
+    $this->get("/s/{$this->token}/ticket")->assertDontSeeText('Bestellung bei Hi.Events ansehen');
+})->with([
+    'no short id' => [[], null],
+    'no public url' => [['seating.hievents.public_url' => null], 'o_abc'],
+]);
 
 it('keeps personal links out of search engines and referrers', function () {
     $this->get("/s/{$this->token}")

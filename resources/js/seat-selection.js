@@ -15,8 +15,8 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
         needed,
         selected: [...initial],
         notice: null,
-        saved: false,
         busy: false,
+        leaving: false,
         passUrl,
 
         init() {
@@ -39,7 +39,6 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
             const id = el.dataset.seat;
 
             this.notice = null;
-            this.saved = false;
 
             if (this.selected.includes(id)) {
                 this.selected = this.selected.filter((seat) => seat !== id);
@@ -67,14 +66,12 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
         remove(id) {
             this.selected = this.selected.filter((seat) => seat !== id);
             this.notice = null;
-            this.saved = false;
             this.paint();
         },
 
         clearAll() {
             this.selected = [];
             this.notice = null;
-            this.saved = false;
             this.paint();
         },
 
@@ -130,14 +127,12 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
         dropLost(seats) {
             this.selected = this.selected.filter((id) => !seats.includes(id));
             this.notice = say('Dieser Platz wurde gerade vergeben. Bitte wähle einen anderen.', 'Diese Plätze wurden gerade vergeben. Bitte wählt andere.');
-            this.saved = false;
             this.paint();
         },
 
         async suggest() {
             this.busy = true;
             this.notice = null;
-            this.saved = false;
 
             try {
                 await this.refresh();
@@ -191,7 +186,9 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 } else if (response.status === 403 || response.status === 419) {
                     location.reload();
                 } else if (response.ok) {
-                    this.saved = true;
+                    // The pass confirms the save. Stays busy so nobody taps twice meanwhile.
+                    this.leaving = true;
+                    location.assign(passUrl);
                 } else {
                     const body = await response.json().catch(() => ({}));
 
@@ -200,7 +197,7 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
             } catch {
                 this.notice = say('Das Speichern hat nicht geklappt. Bitte prüfe deine Verbindung.', 'Das Speichern hat nicht geklappt. Bitte prüft eure Verbindung.');
             } finally {
-                this.busy = false;
+                this.busy = this.leaving;
             }
         },
     };

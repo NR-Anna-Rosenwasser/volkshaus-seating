@@ -89,6 +89,21 @@ class Order extends Model
     }
 
     /**
+     * The buyer's own order page on Hi.Events, which holds their tickets.
+     */
+    public function hieventsSummaryUrl(): ?string
+    {
+        $base = rtrim((string) config('seating.hievents.public_url'), '/');
+        $event = config('seating.event_id');
+
+        if ($base === '' || ! $event || ! $this->short_id) {
+            return null;
+        }
+
+        return "{$base}/checkout/{$event}/".rawurlencode($this->short_id).'/summary';
+    }
+
+    /**
      * Derived, not random: several mails carry the same link, yet only its
      * hash is stored. Changing APP_KEY invalidates every link.
      */
