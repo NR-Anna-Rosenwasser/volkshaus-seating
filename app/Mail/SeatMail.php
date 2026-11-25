@@ -88,7 +88,7 @@ class SeatMail extends Mailable implements ShouldQueue
         $needed = $this->order->seatsNeeded();
         $entry = $this->order->say(
             'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur deinen Sitzplatz.',
-            'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur euren Sitzplatz.',
+            'Einlass nur mit den Tickets von Hi.Events. Dieses Mail zeigt nur eure Sitzplätze.',
         );
         $contact = config('seating.contact_email');
         $changes = $contact

@@ -23,6 +23,8 @@ use Illuminate\Support\Facades\DB;
 #[Hidden(['token_hash'])]
 class Order extends Model
 {
+    private ?bool $solo = null;
+
     /** @use HasFactory<OrderFactory> */
     use HasFactory;
 
@@ -135,7 +137,14 @@ class Order extends Model
      */
     public function say(string $solo, string $group): string
     {
-        return $this->seatsNeeded() === 1 ? $solo : $group;
+        return $this->isSolo() ? $solo : $group;
+    }
+
+    public function isSolo(): bool
+    {
+        // Decided once, so one page or mail never switches between du and ihr.
+        // A cancelled order keeps the form it had.
+        return $this->solo ??= ($this->seatsNeeded() ?: $this->attendees()->where('needs_seat', true)->count()) === 1;
     }
 
     public function attendees(): HasMany

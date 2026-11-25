@@ -237,7 +237,7 @@ it('gives the final mail its seats, doors time and pass', function () {
     expect((new SeatMail($order, MailType::Final))->render())
         ->toContain('Türöffnung: Montag, 1. Februar 2027, 19:00 Uhr')
         ->toContain($order->selectionUrl().'/ticket')
-        ->toContain('Einlass nur mit dem Ticket von Hi.Events');
+        ->toContain('Einlass nur mit den Tickets von Hi.Events. Dieses Mail zeigt nur eure Sitzplätze.');
 });
 
 it('lets replies reach the organisers', function () {

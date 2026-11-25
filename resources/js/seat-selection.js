@@ -6,9 +6,10 @@ const REFRESH_MS = 10_000;
  * The seat map plus choosing seats. Nothing is held while choosing: the
  * server decides on save, and a conflict sends the buyer back here.
  */
-export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sections, total }) => {
+export default ({ needed, solo, initial, url, suggestUrl, saveUrl, passUrl, csrf, sections, total }) => {
     const map = seatMap({ url, refreshMs: REFRESH_MS, sections, total });
-    const say = (solo, group) => (needed === 1 ? solo : group);
+    // The server decides du or ihr, so page and mails always agree.
+    const say = (single, group) => (solo ? single : group);
 
     return {
         ...map,
@@ -49,7 +50,10 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
             } else if (this.needed === 1) {
                 this.selected = [id];
             } else if (this.selected.length >= this.needed) {
-                this.notice = `Ihr habt schon ${this.needed} Plätze gewählt. Tippt einen an, um ihn abzuwählen.`;
+                this.notice = say(
+                    'Du hast schon einen Platz gewählt. Tippe ihn an, um ihn abzuwählen.',
+                    `Ihr habt schon ${this.needed} Plätze gewählt. Tippt einen an, um ihn abzuwählen.`,
+                );
 
                 return;
             } else {
