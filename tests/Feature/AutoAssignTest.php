@@ -194,7 +194,7 @@ it('sends one mail per order, spread out', function () {
     {
         public array $delays = [];
 
-        public function send(Order $order, MailType $type, int $delaySeconds = 0): void
+        public function send(Order $order, MailType $type, int $delaySeconds = 0, ?bool $changed = null): void
         {
             $this->delays[] = [$type, $delaySeconds];
         }

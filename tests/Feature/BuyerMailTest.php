@@ -126,7 +126,7 @@ it('spreads a batch out to respect the rate limit', function () {
     {
         public array $delays = [];
 
-        public function send(Order $order, MailType $type, int $delaySeconds = 0): void
+        public function send(Order $order, MailType $type, int $delaySeconds = 0, ?bool $changed = null): void
         {
             $this->delays[] = $delaySeconds;
         }
@@ -428,4 +428,63 @@ describe('Saalplan picture and order link', function () {
             ->not->toContain('image/png')
             ->not->toContain('/summary');
     })->with([MailType::Link, MailType::Reminder]);
+});
+
+describe('changed seats', function () {
+    beforeEach(function () {
+        $this->order = buyer();
+        $this->token = $this->order->issueToken();
+    });
+
+    function confirmations(): array
+    {
+        $sent = [];
+        Mail::assertQueued(SeatMail::class, function (SeatMail $mail) use (&$sent) {
+            $sent[] = $mail->changed;
+
+            return true;
+        });
+
+        return $sent;
+    }
+
+    it('confirms the first choice as a plain confirmation', function () {
+        app(SeatSelection::class)->save($this->order, ['P-12-7', 'P-12-8']);
+
+        expect(confirmations())->toBe([false]);
+    });
+
+    it('says so when the seats change', function () {
+        app(SeatSelection::class)->save($this->order, ['P-12-7', 'P-12-8']);
+        app(SeatSelection::class)->save($this->order->refresh(), ['P-14-7', 'P-14-8']);
+
+        expect(confirmations())->toBe([false, true]);
+    });
+
+    it('does not call the same seats saved again a change', function () {
+        app(SeatSelection::class)->save($this->order, ['P-12-7', 'P-12-8']);
+        app(SeatSelection::class)->save($this->order->refresh(), ['P-12-8', 'P-12-7']);
+
+        expect(confirmations())->toBe([false, false]);
+    });
+
+    it('calls a later confirmation from elsewhere a change, but not a resend', function () {
+        app(BuyerMailer::class)->send($this->order, MailType::Confirmation);
+        app(BuyerMailer::class)->send($this->order, MailType::Confirmation);
+        app(BuyerMailer::class)->send($this->order, MailType::Confirmation, changed: false);
+
+        expect(confirmations())->toBe([false, true, false]);
+    });
+
+    it('words the change mail', function () {
+        seated($this->order, 'P-12-7', 'P-12-8');
+        $mail = new SeatMail($this->order, MailType::Confirmation, changed: true);
+
+        $mail->assertHasSubject('Eure Plätze wurden geändert: Hässig am Mittwoch');
+        expect($mail->render())->toContain('Eure Plätze wurden geändert. Das sind eure aktuellen Plätze:');
+
+        $solo = buyer(1);
+        seated($solo, 'P-12-9');
+        (new SeatMail($solo, MailType::Confirmation, changed: true))->assertHasSubject('Dein Platz wurde geändert: Hässig am Mittwoch');
+    });
 });

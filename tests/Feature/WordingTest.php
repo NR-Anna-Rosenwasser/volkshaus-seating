@@ -78,6 +78,10 @@ function everythingBuyersSee(int $tickets): array
         $texts["mail {$type->value}, text"] = view($content->text, $content->with)->render();
     }
 
+    $changed = new SeatMail(Order::find($order->id), MailType::Confirmation, changed: true);
+    $texts['mail changed, subject'] = $changed->envelope()->subject;
+    $texts['mail changed, html'] = $changed->render();
+
     $empty = wordingOrder($tickets);
     $texts['pass, no seats'] = test()->get("/s/{$empty->issueToken()}/ticket")->getContent();
 

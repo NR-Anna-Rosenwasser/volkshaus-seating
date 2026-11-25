@@ -32,7 +32,10 @@ class SeatMail extends Mailable implements ShouldQueue
 
     public int $backoff = 60;
 
-    public function __construct(public Order $order, public MailType $type) {}
+    /**
+     * @param  bool  $changed  A Confirmation after seats the buyer already had were changed.
+     */
+    public function __construct(public Order $order, public MailType $type, public bool $changed = false) {}
 
     public function envelope(): Envelope
     {
@@ -67,7 +70,9 @@ class SeatMail extends Mailable implements ShouldQueue
     {
         return match ($this->type) {
             MailType::Link => $this->order->say('Wähle deinen Platz', 'Wählt eure Plätze'),
-            MailType::Confirmation => $this->order->say('Dein Platz', 'Eure Plätze'),
+            MailType::Confirmation => $this->changed
+                ? $this->order->say('Dein Platz wurde geändert', 'Eure Plätze wurden geändert')
+                : $this->order->say('Dein Platz', 'Eure Plätze'),
             MailType::Reminder => $this->order->say('Erinnerung: Wähle deinen Platz', 'Erinnerung: Wählt eure Plätze'),
             MailType::AutoAssigned => $this->order->say('Wir haben dir einen Platz zugeteilt', 'Wir haben euch Plätze zugeteilt'),
             MailType::Final => $this->order->say('Bis bald: dein Platz', 'Bis bald: eure Plätze'),
@@ -113,7 +118,9 @@ class SeatMail extends Mailable implements ShouldQueue
                 'buttonUrl' => $selection,
             ],
             MailType::Confirmation => [
-                'lines' => [$this->order->say('Das ist dein aktueller Platz:', 'Das sind eure aktuellen Plätze:')],
+                'lines' => $this->changed
+                    ? [$this->order->say('Dein Platz wurde geändert. Das ist dein aktueller Platz:', 'Eure Plätze wurden geändert. Das sind eure aktuellen Plätze:')]
+                    : [$this->order->say('Das ist dein aktueller Platz:', 'Das sind eure aktuellen Plätze:')],
                 'closing' => [
                     $canChange
                         ? $this->order->say("Du kannst ihn bis {$deadline} ändern.", "Ihr könnt sie bis {$deadline} ändern.")

@@ -49,6 +49,8 @@ class SeatSelection
      */
     public function save(Order $order, array $seatIds): void
     {
+        $before = $order->seats()->pluck('seats.id')->sort()->values()->all();
+
         DB::transaction(function () use ($order, $seatIds): void {
             Order::lockByHieventsId($order->hievents_order_id);
 
@@ -84,7 +86,9 @@ class SeatSelection
             $order->update(['seats_confirmed_at' => now()]);
         });
 
-        $this->mailer->send($order, MailType::Confirmation);
+        // Saving the same seats again is not a change.
+        $after = collect($seatIds)->sort()->values()->all();
+        $this->mailer->send($order, MailType::Confirmation, changed: $before !== [] && $before !== $after);
     }
 
     /**
