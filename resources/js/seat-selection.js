@@ -6,17 +6,19 @@ const REFRESH_MS = 10_000;
  * The seat map plus choosing seats. Nothing is held while choosing: the
  * server decides on save, and a conflict sends the buyer back here.
  */
-export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sections, total }) => {
+export default ({ needed, solo, gapMessage, initial, url, suggestUrl, saveUrl, passUrl, csrf, sections, total }) => {
     const map = seatMap({ url, refreshMs: REFRESH_MS, sections, total });
-    const say = (solo, group) => (needed === 1 ? solo : group);
+    // The server decides du or ihr, so page and mails always agree.
+    const say = (single, group) => (solo ? single : group);
 
     return {
         ...map,
         needed,
         selected: [...initial],
         notice: null,
-        saved: false,
+        noticeKind: 'info',
         busy: false,
+        leaving: false,
         passUrl,
 
         init() {
@@ -30,6 +32,41 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
             return this.zoomed ? `${verb} auf einen Platz, um ihn zu wählen.` : `${verb} auf einen Bereich, um ihn zu vergrössern.`;
         },
 
+        /** Shows a notice in the action bar. Errors look different from hints. */
+        tell(text, kind = 'info') {
+            this.notice = text;
+            this.noticeKind = kind;
+        },
+
+        /** The one message the action bar shows: the most important right now. */
+        message() {
+            if (this.notice) {
+                return { text: this.notice, kind: this.noticeKind };
+            }
+
+            if (this.needed > 1 && this.hasSingleGap()) {
+                return { text: gapMessage, kind: 'warning' };
+            }
+
+            if (this.selected.length > 1 && !this.together()) {
+                return { text: 'Eure Plätze liegen nicht nebeneinander.', kind: 'info' };
+            }
+
+            if (this.hasObstructed()) {
+                return { text: say('Dieser Platz hat eine Sichtbehinderung.', 'Mindestens ein Platz hat eine Sichtbehinderung.'), kind: 'info' };
+            }
+
+            return null;
+        },
+
+        countText() {
+            if (this.needed > 1) {
+                return `${this.selected.length} von ${this.needed} gewählt`;
+            }
+
+            return this.selected.length > 0 ? this.selectedSeats()[0].label : 'Noch kein Platz gewählt';
+        },
+
         paint() {
             this.$refs.viewport.querySelectorAll('.seat.is-selected').forEach((el) => el.classList.remove('is-selected'));
             this.selected.forEach((id) => this.seatElement(id)?.classList.add('is-selected'));
@@ -39,7 +76,6 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
             const id = el.dataset.seat;
 
             this.notice = null;
-            this.saved = false;
 
             if (this.selected.includes(id)) {
                 this.selected = this.selected.filter((seat) => seat !== id);
@@ -50,7 +86,10 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
             } else if (this.needed === 1) {
                 this.selected = [id];
             } else if (this.selected.length >= this.needed) {
-                this.notice = `Ihr habt schon ${this.needed} Plätze gewählt. Tippt einen an, um ihn abzuwählen.`;
+                this.tell(say(
+                    'Du hast schon einen Platz gewählt. Tippe ihn an, um ihn abzuwählen.',
+                    `Ihr habt schon ${this.needed} Plätze gewählt. Tippt einen an, um ihn abzuwählen.`,
+                ));
 
                 return;
             } else {
@@ -67,14 +106,12 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
         remove(id) {
             this.selected = this.selected.filter((seat) => seat !== id);
             this.notice = null;
-            this.saved = false;
             this.paint();
         },
 
         clearAll() {
             this.selected = [];
             this.notice = null;
-            this.saved = false;
             this.paint();
         },
 
@@ -129,15 +166,13 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
 
         dropLost(seats) {
             this.selected = this.selected.filter((id) => !seats.includes(id));
-            this.notice = say('Dieser Platz wurde gerade vergeben. Bitte wähle einen anderen.', 'Diese Plätze wurden gerade vergeben. Bitte wählt andere.');
-            this.saved = false;
+            this.tell(say('Dieser Platz wurde gerade vergeben. Bitte wähle einen anderen.', 'Diese Plätze wurden gerade vergeben. Bitte wählt andere.'), 'error');
             this.paint();
         },
 
         async suggest() {
             this.busy = true;
             this.notice = null;
-            this.saved = false;
 
             try {
                 await this.refresh();
@@ -153,7 +188,7 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 const { seats } = await response.json();
 
                 if (seats.length < this.needed) {
-                    this.notice = say('Es ist kein Platz mehr frei.', 'Es sind nicht mehr genug Plätze frei.');
+                    this.tell(say('Es ist kein Platz mehr frei.', 'Es sind nicht mehr genug Plätze frei.'));
 
                     return;
                 }
@@ -163,10 +198,10 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 this.showBounds(seats);
 
                 if (!this.together()) {
-                    this.notice = 'Für eure Gruppe gibt es keine Plätze mehr am Stück. Das ist die beste Aufteilung.';
+                    this.tell('Für eure Gruppe gibt es keine Plätze mehr am Stück. Das ist die beste Aufteilung.');
                 }
             } catch {
-                this.notice = say('Das hat nicht geklappt. Bitte versuche es noch einmal.', 'Das hat nicht geklappt. Bitte versucht es noch einmal.');
+                this.tell(say('Das hat nicht geklappt. Bitte versuche es noch einmal.', 'Das hat nicht geklappt. Bitte versucht es noch einmal.'), 'error');
             } finally {
                 this.busy = false;
             }
@@ -191,16 +226,18 @@ export default ({ needed, initial, url, suggestUrl, saveUrl, passUrl, csrf, sect
                 } else if (response.status === 403 || response.status === 419) {
                     location.reload();
                 } else if (response.ok) {
-                    this.saved = true;
+                    // The pass confirms the save. Stays busy so nobody taps twice meanwhile.
+                    this.leaving = true;
+                    location.assign(passUrl);
                 } else {
                     const body = await response.json().catch(() => ({}));
 
-                    this.notice = body.errors?.seats?.[0] ?? say('Das Speichern hat nicht geklappt. Bitte versuche es noch einmal.', 'Das Speichern hat nicht geklappt. Bitte versucht es noch einmal.');
+                    this.tell(body.errors?.seats?.[0] ?? say('Das Speichern hat nicht geklappt. Bitte versuche es noch einmal.', 'Das Speichern hat nicht geklappt. Bitte versucht es noch einmal.'), 'error');
                 }
             } catch {
-                this.notice = say('Das Speichern hat nicht geklappt. Bitte prüfe deine Verbindung.', 'Das Speichern hat nicht geklappt. Bitte prüft eure Verbindung.');
+                this.tell(say('Das Speichern hat nicht geklappt. Bitte prüfe deine Verbindung.', 'Das Speichern hat nicht geklappt. Bitte prüft eure Verbindung.'), 'error');
             } finally {
-                this.busy = false;
+                this.busy = this.leaving;
             }
         },
     };

@@ -88,7 +88,7 @@ export default ({ url, refreshMs, sections, total }) => {
         swiss,
 
         hint() {
-            return this.zoomed ? 'Tippt auf einen Platz für Details.' : 'Tippt auf einen Bereich, um ihn zu vergrössern.';
+            return this.zoomed ? 'Auf einen Platz tippen für Details.' : 'Auf einen Bereich tippen, um ihn zu vergrössern.';
         },
 
         seatTapped(el) {

@@ -13,8 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
-            // Stateless and without CSRF protection: the signature authenticates these requests.
-            Route::middleware('api')->group(base_path('routes/webhooks.php'));
+            Route::middleware('api')->group(base_path('routes/health.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

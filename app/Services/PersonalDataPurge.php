@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\WebhookEvent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Removes everything that points to a person and keeps the counts: how many
@@ -66,6 +67,13 @@ class PersonalDataPurge
             DB::table('jobs')->delete();
             DB::table('failed_jobs')->delete();
             DB::table('sessions')->whereNull('user_id')->delete();
+
+            // Order exports hold names and addresses. Only what is inside, so the
+            // folder stays for the next export.
+            DB::table('exports')->delete();
+            $disk = Storage::disk('local');
+            array_map($disk->deleteDirectory(...), $disk->directories('filament_exports'));
+            $disk->delete($disk->files('filament_exports'));
 
             // Queued mails and Horizon's job history hold addresses too. Last, so
             // that a Redis failure rolls all of this back and the next run retries.

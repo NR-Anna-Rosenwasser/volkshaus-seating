@@ -45,7 +45,6 @@ beforeEach(function () {
         'seating.event_date' => '2027-02-01 20:00',
         'seating.purge_after_days' => 30,
         'seating.admin_emails' => ['admin@example.ch'],
-        'seating.hievents.webhook_secret' => 'secret',
         'seating.hievents.base_url' => 'https://hi.test',
         'seating.hievents.api_key' => 'key',
         'seating.backup_keep_days' => 14,
@@ -65,17 +64,6 @@ function personalOrder(): Order
     return $order;
 }
 
-function signedWebhook(array $data)
-{
-    $body = json_encode($data);
-
-    return test()->call('POST', '/webhooks/hievents', [], [], [], [
-        'CONTENT_TYPE' => 'application/json',
-        'HTTP_ACCEPT' => 'application/json',
-        'HTTP_SIGNATURE' => hash_hmac('sha256', $body, 'secret'),
-    ], $body);
-}
-
 describe('rate limits', function () {
     it('limits the public plan', function (string $path) {
         foreach (range(1, 120) as $request) {
@@ -84,14 +72,6 @@ describe('rate limits', function () {
 
         $this->get($path)->assertTooManyRequests();
     })->with(['/api/plan', '/plan']);
-
-    it('limits the webhook', function () {
-        foreach (range(1, 600) as $request) {
-            $this->postJson('/webhooks/hievents', [])->assertUnauthorized();
-        }
-
-        $this->postJson('/webhooks/hievents', [])->assertTooManyRequests();
-    });
 
     it('limits per visitor', function () {
         foreach (range(1, 120) as $request) {
@@ -249,21 +229,6 @@ describe('purge', function () {
         $this->artisan('seating:purge', ['--dry-run' => true])->expectsOutputToContain('Would remove: 1 orders')->assertSuccessful();
 
         expect($this->order->refresh()->email)->toBe('rita@example.ch');
-    });
-
-    it('lets no webhook bring personal data back', function () {
-        $this->travelTo('2027-03-04 12:00:00');
-        $this->artisan('seating:purge');
-
-        signedWebhook(['event_type' => 'order.updated', 'payload' => ['id' => 1, 'email' => 'rita@example.ch']])->assertOk();
-
-        expect(WebhookEvent::count())->toBe(0);
-    });
-
-    it('still rejects unsigned webhooks after the date', function () {
-        $this->travelTo('2027-03-04 12:00:00');
-
-        $this->postJson('/webhooks/hievents', ['event_type' => 'x'])->assertUnauthorized();
     });
 
     it('lets no reconcile bring personal data back', function () {

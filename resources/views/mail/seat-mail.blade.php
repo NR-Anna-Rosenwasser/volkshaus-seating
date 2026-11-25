@@ -21,9 +21,20 @@
                                     </ul>
                                 @endif
 
+                                @if ($planImage)
+                                    <img src="{{ $message->embedData($planImage, 'saalplan.png', 'image/png') }}" width="496" alt="Saalplan: {{ implode(', ', $seats) }}" style="display: block; width: 100%; max-width: 496px; height: auto; margin: 0 0 6px; border: 1px solid #e8e8e8; border-radius: 12px;">
+                                    <p style="margin: 0 0 16px; font-size: 12px; color: #6b6b6b;">{{ $planCaption }}</p>
+                                @endif
+
                                 <p style="margin: 20px 0;">
                                     <a href="{{ $buttonUrl }}" style="display: inline-block; padding: 12px 20px; border-radius: 12px; background: #181818; color: #ffffff; font-weight: bold; text-decoration: none;">{{ $buttonLabel }}</a>
                                 </p>
+
+                                @if ($summaryUrl)
+                                    <p style="margin: 0 0 20px; font-size: 14px;">
+                                        <a href="{{ $summaryUrl }}" style="color: #a05c50; font-weight: bold;">Bestellung bei Hi.Events ansehen</a>
+                                    </p>
+                                @endif
 
                                 @foreach ($closing as $line)
                                     <p style="margin: 0 0 12px; font-size: 14px;">{{ $line }}</p>

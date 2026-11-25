@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Seat;
 use App\Services\AdminAlert;
 use App\Services\BuyerMailer;
+use App\Services\SeatPlanImage;
 use App\Services\SeatSelection;
 use Database\Seeders\SeatSeeder;
 use Illuminate\Support\Facades\Mail;
@@ -125,7 +126,7 @@ it('spreads a batch out to respect the rate limit', function () {
     {
         public array $delays = [];
 
-        public function send(Order $order, MailType $type, int $delaySeconds = 0): void
+        public function send(Order $order, MailType $type, int $delaySeconds = 0, ?bool $changed = null): void
         {
             $this->delays[] = $delaySeconds;
         }
@@ -236,7 +237,7 @@ it('gives the final mail its seats, doors time and pass', function () {
     expect((new SeatMail($order, MailType::Final))->render())
         ->toContain('Türöffnung: Montag, 1. Februar 2027, 19:00 Uhr')
         ->toContain($order->selectionUrl().'/ticket')
-        ->toContain('Einlass nur mit dem Ticket von Hi.Events');
+        ->toContain('Einlass nur mit den Tickets von Hi.Events. Dieses Mail zeigt nur eure Sitzplätze.');
 });
 
 it('lets replies reach the organisers', function () {
@@ -390,4 +391,100 @@ it('runs mail on a schedule', function () {
         ->expectsOutputToContain('seating:send-reminders')
         ->expectsOutputToContain('seating:send-final')
         ->assertSuccessful();
+});
+
+describe('Saalplan picture and order link', function () {
+    it('draws the hall as a PNG and marks the chosen seats', function () {
+        $png = app(SeatPlanImage::class)->png([]);
+        $marked = app(SeatPlanImage::class)->png(['P-12-7']);
+        [$width, , $type] = getimagesizefromstring($marked);
+
+        expect($width)->toBe(SeatPlanImage::WIDTH)
+            ->and($type)->toBe(IMAGETYPE_PNG)
+            ->and(strlen($marked))->toBeLessThan(150_000)
+            ->and($marked)->not->toBe($png);
+    });
+
+    it('puts the picture and the order link into mails that list seats', function (MailType $type) {
+        config(['seating.hievents.public_url' => 'https://tickets.example.ch', 'seating.event_id' => '7']);
+        $order = buyer(2, ['short_id' => 'o_abc']);
+        seated($order, 'P-12-7', 'P-12-8');
+
+        $mail = new SeatMail($order, $type);
+
+        // A preview inlines the picture. Sending attaches it and points at it by cid.
+        expect($mail->render())
+            ->toContain('src="data:image/png;base64,')
+            ->toContain('Blau sind eure Plätze, oben ist die Bühne.')
+            ->toContain('https://tickets.example.ch/checkout/7/o_abc/summary');
+        $mail->assertSeeInText('Bestellung bei Hi.Events: https://tickets.example.ch/checkout/7/o_abc/summary');
+    })->with([MailType::Confirmation, MailType::AutoAssigned, MailType::Final]);
+
+    it('leaves both out of mails without seats', function (MailType $type) {
+        config(['seating.hievents.public_url' => 'https://tickets.example.ch', 'seating.event_id' => '7']);
+        $order = buyer(2, ['short_id' => 'o_abc']);
+
+        expect((new SeatMail($order, $type))->render())
+            ->not->toContain('image/png')
+            ->not->toContain('/summary');
+    })->with([MailType::Link, MailType::Reminder]);
+});
+
+describe('changed seats', function () {
+    beforeEach(function () {
+        $this->order = buyer();
+        $this->token = $this->order->issueToken();
+    });
+
+    function confirmations(): array
+    {
+        $sent = [];
+        Mail::assertQueued(SeatMail::class, function (SeatMail $mail) use (&$sent) {
+            $sent[] = $mail->changed;
+
+            return true;
+        });
+
+        return $sent;
+    }
+
+    it('confirms the first choice as a plain confirmation', function () {
+        app(SeatSelection::class)->save($this->order, ['P-12-7', 'P-12-8']);
+
+        expect(confirmations())->toBe([false]);
+    });
+
+    it('says so when the seats change', function () {
+        app(SeatSelection::class)->save($this->order, ['P-12-7', 'P-12-8']);
+        app(SeatSelection::class)->save($this->order->refresh(), ['P-14-7', 'P-14-8']);
+
+        expect(confirmations())->toBe([false, true]);
+    });
+
+    it('does not call the same seats saved again a change', function () {
+        app(SeatSelection::class)->save($this->order, ['P-12-7', 'P-12-8']);
+        app(SeatSelection::class)->save($this->order->refresh(), ['P-12-8', 'P-12-7']);
+
+        expect(confirmations())->toBe([false, false]);
+    });
+
+    it('calls a later confirmation from elsewhere a change, but not a resend', function () {
+        app(BuyerMailer::class)->send($this->order, MailType::Confirmation);
+        app(BuyerMailer::class)->send($this->order, MailType::Confirmation);
+        app(BuyerMailer::class)->send($this->order, MailType::Confirmation, changed: false);
+
+        expect(confirmations())->toBe([false, true, false]);
+    });
+
+    it('words the change mail', function () {
+        seated($this->order, 'P-12-7', 'P-12-8');
+        $mail = new SeatMail($this->order, MailType::Confirmation, changed: true);
+
+        $mail->assertHasSubject('Eure Plätze wurden geändert: Hässig am Mittwoch');
+        expect($mail->render())->toContain('Eure Plätze wurden geändert. Das sind eure aktuellen Plätze:');
+
+        $solo = buyer(1);
+        seated($solo, 'P-12-9');
+        (new SeatMail($solo, MailType::Confirmation, changed: true))->assertHasSubject('Dein Platz wurde geändert: Hässig am Mittwoch');
+    });
 });

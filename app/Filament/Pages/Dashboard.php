@@ -71,7 +71,7 @@ class Dashboard extends BaseDashboard
             ->icon(Heroicon::OutlinedArrowPath)
             ->requiresConfirmation()
             ->modalHeading('Abgleich mit Hi.Events starten?')
-            ->modalDescription('Holt alle Bestellungen und korrigiert Abweichungen. Das kann einen Moment dauern.')
+            ->modalDescription('Holt alle Bestellungen sofort, statt auf den nächsten automatischen Abgleich zu warten. Er läuft alle 2 Minuten.')
             ->modalSubmitActionLabel('Starten')
             ->action(function (): void {
                 Artisan::call('seating:reconcile');

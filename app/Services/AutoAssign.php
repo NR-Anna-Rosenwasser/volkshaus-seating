@@ -137,7 +137,7 @@ class AutoAssign
         return DB::transaction(function () use ($order, $mailPosition): AutoAssignment {
             Order::lockByHieventsId($order->hievents_order_id);
 
-            // Webhooks may have changed the order since the list was read.
+            // The sync may have changed the order since the list was read.
             $order->refresh();
             $waiting = $order->attendees()->withoutSeat()->orderBy('id')->get();
             $own = $order->seats()->pluck('seats.id')->all();

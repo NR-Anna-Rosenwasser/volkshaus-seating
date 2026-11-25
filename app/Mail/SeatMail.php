@@ -5,10 +5,12 @@ namespace App\Mail;
 use App\Enums\MailType;
 use App\Models\Order;
 use App\Models\Seat;
+use App\Services\SeatPlanImage;
 use App\Support\SelectionWindow;
 use App\Support\VenueLayout;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
@@ -30,7 +32,10 @@ class SeatMail extends Mailable implements ShouldQueue
 
     public int $backoff = 60;
 
-    public function __construct(public Order $order, public MailType $type) {}
+    /**
+     * @param  bool  $changed  A Confirmation after seats the buyer already had were changed.
+     */
+    public function __construct(public Order $order, public MailType $type, public bool $changed = false) {}
 
     public function envelope(): Envelope
     {
@@ -45,10 +50,19 @@ class SeatMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
+        $seats = $this->shownSeats();
+
         return new Content(
             html: 'mail.seat-mail',
             text: 'mail.seat-mail-text',
-            with: [...$this->copy(), 'seats' => $this->shownSeats()],
+            with: [
+                ...$this->copy(),
+                'seats' => $seats->map(fn (Seat $seat): string => app(VenueLayout::class)->seatLabel($seat))->all(),
+                // Rendered when sent, like the seat list, so it is never out of date.
+                'planImage' => $seats->isEmpty() ? null : app(SeatPlanImage::class)->png($seats->pluck('id')->all()),
+                'planCaption' => $this->order->say('Blau ist dein Platz, oben ist die Bühne.', 'Blau sind eure Plätze, oben ist die Bühne.'),
+                'summaryUrl' => $seats->isEmpty() ? null : $this->order->hieventsSummaryUrl(),
+            ],
         );
     }
 
@@ -56,7 +70,9 @@ class SeatMail extends Mailable implements ShouldQueue
     {
         return match ($this->type) {
             MailType::Link => $this->order->say('Wähle deinen Platz', 'Wählt eure Plätze'),
-            MailType::Confirmation => $this->order->say('Dein Platz', 'Eure Plätze'),
+            MailType::Confirmation => $this->changed
+                ? $this->order->say('Dein Platz wurde geändert', 'Eure Plätze wurden geändert')
+                : $this->order->say('Dein Platz', 'Eure Plätze'),
             MailType::Reminder => $this->order->say('Erinnerung: Wähle deinen Platz', 'Erinnerung: Wählt eure Plätze'),
             MailType::AutoAssigned => $this->order->say('Wir haben dir einen Platz zugeteilt', 'Wir haben euch Plätze zugeteilt'),
             MailType::Final => $this->order->say('Bis bald: dein Platz', 'Bis bald: eure Plätze'),
@@ -77,7 +93,7 @@ class SeatMail extends Mailable implements ShouldQueue
         $needed = $this->order->seatsNeeded();
         $entry = $this->order->say(
             'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur deinen Sitzplatz.',
-            'Einlass nur mit dem Ticket von Hi.Events. Dieses Mail zeigt nur euren Sitzplatz.',
+            'Einlass nur mit den Tickets von Hi.Events. Dieses Mail zeigt nur eure Sitzplätze.',
         );
         $contact = config('seating.contact_email');
         $changes = $contact
@@ -102,7 +118,9 @@ class SeatMail extends Mailable implements ShouldQueue
                 'buttonUrl' => $selection,
             ],
             MailType::Confirmation => [
-                'lines' => [$this->order->say('Das ist dein aktueller Platz:', 'Das sind eure aktuellen Plätze:')],
+                'lines' => $this->changed
+                    ? [$this->order->say('Dein Platz wurde geändert. Das ist dein aktueller Platz:', 'Eure Plätze wurden geändert. Das sind eure aktuellen Plätze:')]
+                    : [$this->order->say('Das ist dein aktueller Platz:', 'Das sind eure aktuellen Plätze:')],
                 'closing' => [
                     $canChange
                         ? $this->order->say("Du kannst ihn bis {$deadline} ändern.", "Ihr könnt sie bis {$deadline} ändern.")
@@ -149,20 +167,16 @@ class SeatMail extends Mailable implements ShouldQueue
     }
 
     /**
-     * @return list<string>
+     * @return Collection<int, Seat>
      */
-    private function shownSeats(): array
+    private function shownSeats(): Collection
     {
         if (in_array($this->type, [MailType::Link, MailType::Reminder], true)) {
-            return [];
+            return new Collection;
         }
-
-        $layout = app(VenueLayout::class);
 
         return $this->order->seats()
             ->orderBy('section')->orderBy('row')->orderBy('number')
-            ->get()
-            ->map(fn (Seat $seat): string => $layout->seatLabel($seat))
-            ->all();
+            ->get();
     }
 }

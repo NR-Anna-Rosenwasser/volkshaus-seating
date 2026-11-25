@@ -1,4 +1,4 @@
-@props(['layout', 'states'])
+@props(['layout', 'states', 'hint' => 'Auf einen Bereich tippen, um ihn zu vergrössern.'])
 
 {{-- Controls sit in their own strips so they never cover a seat. --}}
 <div x-cloak class="flex items-center gap-1 border-b border-line p-2">
@@ -16,4 +16,4 @@
     class="flex min-h-14 items-center border-t border-line px-3 py-2 text-sm leading-snug"
     x-bind:class="seat ? 'font-semibold text-ink' : 'text-muted'"
     x-text="seat ?? hint()"
->Tippt auf einen Bereich, um ihn zu vergrössern.</p>
+>{{ $hint }}</p>

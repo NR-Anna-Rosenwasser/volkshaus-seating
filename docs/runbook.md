@@ -11,7 +11,7 @@ Commands run on the server, in the project folder.
 - [ ] `CONTACT_EMAIL`, `ADMIN_EMAILS` and `WHEELCHAIR_NOTIFY_EMAILS` are real addresses.
 - [ ] Hi.Events has an order-level wheelchair checkbox, and its id is in `WHEELCHAIR_QUESTION_IDS`.
 - [ ] The capacity in Hi.Events equals «Verkaufbar» on the Übersicht.
-- [ ] A real test order worked: webhook received, link mail arrived, seats saved, confirmation arrived.
+- [ ] A real test order worked: order shown within 2 minutes, link mail arrived, seats saved, confirmation arrived.
 - [ ] A test mail looks right in Gmail and Outlook.
 - [ ] A refund and a cancellation behave as expected in the real Hi.Events.
 - [ ] `/health` shows `ok`, and Uptime Kuma watches it.
@@ -86,9 +86,10 @@ found still gets in.
 | `queue: failed` | Mails aren't going out. `docker compose restart horizon`, and `docker compose restart redis` if that doesn't help. Queued mails survive this. |
 | `scheduler: failed` | No links, reminders or backups. `docker compose restart scheduler`. |
 | «E-Mails schlagen fehl» alert | Check the mail provider. Failed jobs are in Warteschlange, under Failed Jobs, with a retry button. |
-| Redis is down | The plan, seat pages and admin keep working, and `/health` shows `failed`. Saving seats shows an error even though the seats were saved, and that confirmation is lost. `docker compose restart redis`, then run «Abgleich» so missed webhooks come back. Seats are safe, and buyers still see them on their page and in the final mail. |
-| «Abgleich fehlgeschlagen» alert | Hi.Events or the API key has a problem. Webhooks still work. Run «Abgleich» again later. |
-| Sales aren't showing up | Check «Letzter Webhook» on the Übersicht, then run «Abgleich mit Hi.Events». |
+| Redis is down | The plan, seat pages and admin keep working, and `/health` shows `failed`. Saving seats shows an error even though the seats were saved, and that confirmation is lost. `docker compose restart redis`, then run «Abgleich». Seats are safe, and buyers still see them on their page and in the final mail. |
+| «Abgleich fehlgeschlagen» alert | Three pulls in a row failed, so no new orders are arriving. Hi.Events or the API key has a problem. It keeps retrying every 2 minutes, and «Abgleich läuft wieder» follows when it works. |
+| «Bestellung nicht übernommen» alert | One order couldn't be applied, all others still are. The log has the reason under its Hi.Events id. |
+| Sales aren't showing up | Check «Letzter Abgleich» on the Übersicht, then run «Abgleich mit Hi.Events». |
 | Red warning on the Übersicht | More tickets than seats. Lower the capacity in Hi.Events, then free blocked seats if you can. |
 | Data is lost or wrong | Restore a backup, see the README. |
 

@@ -165,7 +165,8 @@ class OrderResource extends Resource
                 ->modalDescription(fn (Order $record): string => "Geht an {$record->email}.")
                 ->modalSubmitActionLabel('Senden')
                 ->action(function (Order $record): void {
-                    app(BuyerMailer::class)->send($record, MailType::Confirmation);
+                    // A resend, so nothing has changed.
+                    app(BuyerMailer::class)->send($record, MailType::Confirmation, changed: false);
 
                     Notification::make()->title('Bestätigung versendet')->success()->send();
                 }),

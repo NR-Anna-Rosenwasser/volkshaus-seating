@@ -6,6 +6,10 @@ x-app: &app
   env_file: .env
   environment: &app-environment
     LOG_CHANNEL: stderr
+  # Private files, shared by every Laravel container: horizon writes order
+  # exports, the app serves them, the scheduler purges them.
+  volumes:
+    - private:/app/storage/app/private
 
 services:
   app:
@@ -45,6 +49,7 @@ services:
       <<: *app-environment
       BACKUP_PATH: /backups
     volumes:
+      - private:/app/storage/app/private
       - backups:/backups
     healthcheck:
       disable: true
@@ -83,6 +88,7 @@ services:
       retries: 10
 
 volumes:
+  private:
   postgres-data:
   redis-data:
   backups:

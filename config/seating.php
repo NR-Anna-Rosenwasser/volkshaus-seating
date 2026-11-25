@@ -13,7 +13,8 @@ return [
     'hievents' => [
         'base_url' => env('HIEVENTS_BASE_URL'),
         'api_key' => env('HIEVENTS_API_KEY'),
-        'webhook_secret' => env('HIEVENTS_WEBHOOK_SECRET'),
+        // Where buyers open Hi.Events. BASE_URL may be an internal address.
+        'public_url' => env('HIEVENTS_PUBLIC_URL'),
     ],
 
     'event_name' => env('EVENT_NAME'),

@@ -42,6 +42,8 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->font('Poppins', provider: LocalFontProvider::class)
             ->darkMode(false)
+            // Tells admins when an export is ready to download.
+            ->databaseNotifications()
             ->navigationItems([
                 NavigationItem::make('Warteschlange')
                     ->url('/horizon', shouldOpenInNewTab: true)

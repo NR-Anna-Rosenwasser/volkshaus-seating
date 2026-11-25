@@ -29,6 +29,10 @@ memory, so after changing jobs or mails run `ddev exec php artisan horizon:termi
 Docker Compose runs `app`, `horizon`, `scheduler`, `redis` and `postgres`. The app listens on
 `127.0.0.1:${APP_PORT}` for CloudPanel, which terminates TLS and proxies to it.
 
+`app`, `horizon` and `scheduler` share the `private` volume at `storage/app/private`. Today it only
+holds order exports. It isn't part of the backups, and anything personal stored there has to be
+removed by `seating:purge` too.
+
 Images are public on GHCR, at `ghcr.io/nr-anna-rosenwasser/volkshaus-seating`. The server only needs
 `docker-compose.yml` and `.env`, not the source code.
 
@@ -66,13 +70,11 @@ To build the image yourself instead, run `docker compose build`.
 
 ### Connecting Hi.Events
 
-1. In the event, under Webhooks, add `https://<your domain>/webhooks/hievents`.
-2. Select all order and attendee events. These eight are the ones that exist:
-   `order.created`, `order.updated`, `order.marked_as_paid`, `order.refunded`, `order.cancelled`,
-   `attendee.created`, `attendee.updated`, `attendee.cancelled`.
-3. Put the signing secret it shows you in `HIEVENTS_WEBHOOK_SECRET`.
-4. Create a read-only API key for `HIEVENTS_API_KEY`, and set `HIEVENTS_BASE_URL` and `HIEVENTS_EVENT_ID`.
-5. Set `SEATED_PRODUCT_IDS` to every product that needs a seat, and `WHEELCHAIR_QUESTION_IDS` to the
+Orders come in by pulling: `seating:reconcile` fetches every order of the event every 2 minutes.
+There are no webhooks to set up.
+
+1. Create a read-only API key for `HIEVENTS_API_KEY`, and set `HIEVENTS_BASE_URL` and `HIEVENTS_EVENT_ID`.
+2. Set `SEATED_PRODUCT_IDS` to every product that needs a seat, and `WHEELCHAIR_QUESTION_IDS` to the
    id of the order-level wheelchair question.
 
 Run `docker compose exec app php artisan seating:reconcile` to check the connection. Field names and
@@ -85,7 +87,7 @@ behaviour of the Hi.Events API are in [docs/hievents-api.md](docs/hievents-api.m
 | Every minute | `seating:heartbeat` | Proves to `/health` that scheduler and queue are alive |
 | Every minute | `seating:send-links` | Sends links to new orders while selection is open |
 | Every 15 minutes | `seating:check-auto-assign` | Alerts if auto-assign hasn't run 3 hours after the deadline |
-| Every 30 minutes | `seating:reconcile` | Fixes anything webhooks missed |
+| Every 2 minutes | `seating:reconcile` | Pulls all orders from Hi.Events and applies every change. New orders get their link within about 3 minutes |
 | Hourly | `seating:send-reminders`, `seating:send-final` | Reminders and the final mail, on their days |
 | 03:00 | `seating:backup` | Nightly dump |
 | 04:00 | `seating:purge` | Anonymizes personal data once it is due |
@@ -131,11 +133,11 @@ Redis, not in the dump, so a restore neither brings them back nor removes them.
 ### Personal data
 
 `seating:purge` runs by itself `PURGE_AFTER_DAYS` days after `EVENT_DATE`. It removes names, addresses,
-Hi.Events ids, wheelchair requests, webhook payloads, queued jobs, everything Horizon stored and guest
+Hi.Events ids, wheelchair requests, order exports, old webhook payloads, queued jobs, everything Horizon stored and guest
 sessions, and keeps the counts. **This can't be undone**, so `ADMIN_EMAILS` gets
 a warning 7 days before. A wrong `EVENT_DATE` is the one thing to watch for.
 
-- From that date on, webhooks are ignored and reconcile stops, so nothing can copy names back.
+- From that date on, reconcile stops, so nothing can copy names back.
 - `seating:purge --dry-run` shows the date and what would be removed.
 - Dumps from before the purge still hold personal data until they expire `BACKUP_KEEP_DAYS` days later.
   That's why the selection page promises deletion within 45 days: 30 + 14, and these two have to stay below it.
@@ -147,5 +149,4 @@ The audit log and `mail_log` hold no names, only ids that lead nowhere after the
 ## Local Hi.Events
 
 For end-to-end tests, a local Hi.Events v2.0.0 runs next to this project in `../hievents-local`, on the
-same Docker network as DDEV. See the README there. It sends webhooks to
-`http://ddev-volkshaus-seating-web/webhooks/hievents`, and its mail lands in Mailpit.
+same Docker network as DDEV. See the README there. Its mail lands in Mailpit.

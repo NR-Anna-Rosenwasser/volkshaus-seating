@@ -15,16 +15,27 @@ class BuyerMailer
      * Logging and queueing share one transaction, so a crash can neither
      * lose a mail nor send it twice.
      */
-    public function send(Order $order, MailType $type, int $delaySeconds = 0): void
+    public function send(Order $order, MailType $type, int $delaySeconds = 0, ?bool $changed = null): void
     {
-        DB::transaction(function () use ($order, $type, $delaySeconds): void {
+        DB::transaction(function () use ($order, $type, $delaySeconds, $changed): void {
+            // Unless the caller knows better: seats confirmed once and confirmed again have changed.
+            $changed ??= $type === MailType::Confirmation && $this->hadSeatMail($order);
+
             MailLog::create(['order_id' => $order->id, 'type' => $type, 'sent_at' => now()]);
 
+            $mailable = new SeatMail($order, $type, $changed);
             $mail = Mail::to($order->email);
             $delaySeconds > 0
-                ? $mail->later(now()->addSeconds($delaySeconds), new SeatMail($order, $type))
-                : $mail->queue(new SeatMail($order, $type));
+                ? $mail->later(now()->addSeconds($delaySeconds), $mailable)
+                : $mail->queue($mailable);
         });
+    }
+
+    private function hadSeatMail(Order $order): bool
+    {
+        return MailLog::where('order_id', $order->id)
+            ->whereIn('type', [MailType::Confirmation, MailType::AutoAssigned])
+            ->exists();
     }
 
     /**

@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('seating:heartbeat')->everyMinute();
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
-Schedule::command('seating:reconcile')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('seating:reconcile')->everyTwoMinutes()->withoutOverlapping(10);
 Schedule::command('seating:send-links')->everyMinute()->withoutOverlapping();
 Schedule::command('seating:send-reminders')->hourly()->withoutOverlapping();
 Schedule::command('seating:send-final')->hourly()->withoutOverlapping();
