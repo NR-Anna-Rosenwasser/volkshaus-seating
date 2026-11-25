@@ -127,6 +127,7 @@ it('keeps the du and ihr rule in the page script', function () {
     // Every buyer-facing sentence with a du or ihr word sits inside say(), unless it is only shown to groups.
     $groupOnly = [
         'Für eure Gruppe gibt es keine Plätze mehr am Stück. Das ist die beste Aufteilung.',
+        'Eure Plätze liegen nicht nebeneinander.',
     ];
     preg_match_all("/(['`])((?:(?!\\1).)*?)\\1/u", $script, $strings);
     $offenders = [];

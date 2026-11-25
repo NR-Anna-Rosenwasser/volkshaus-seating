@@ -61,7 +61,7 @@ it('addresses a single ticket as du on the seat pages', function () {
         ->assertOk()
         ->assertSeeText('Dein Platz')
         ->assertSeeText('Wähle einen Platz. Du kannst deine Wahl bis')
-        ->assertSeeText('Besten Platz für mich finden')
+        ->assertSeeText('Besten Platz finden')
         ->assertSeeText('Platz speichern')
         ->assertSeeText('Deine Wahl')
         ->assertDontSeeText('Eure')
@@ -131,7 +131,7 @@ it('shows what the buyer needs', function () {
         ->assertOk()
         ->assertSeeText('Rita Muster')
         ->assertSeeText('Wählt 2 Plätze')
-        ->assertSeeText('Beste Plätze für uns finden');
+        ->assertSeeText('Beste Plätze finden');
 });
 
 it('saves seats', function () {

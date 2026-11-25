@@ -2,7 +2,7 @@
     $contact = config('seating.contact_email');
 @endphp
 
-<x-layouts.public title="Platzwahl">
+<x-layouts.public title="Platzwahl" :with-action-bar="$mode === 'choose'">
     <div class="space-y-5">
         <header>
             <p class="inline-block rounded-full bg-tint px-3 py-1 text-xs font-medium text-ink">Volkshaus, Theatersaal</p>
@@ -20,6 +20,7 @@
                 x-data="seatSelection({
                     needed: {{ $needed }},
                     solo: @js($order->isSolo()),
+                    gapMessage: @js(\App\Services\SeatSelection::SINGLE_GAP_MESSAGE),
                     initial: @js($seats->pluck('id')),
                     url: @js(route('selection.availability', request()->route()->originalParameter('token'))),
                     suggestUrl: @js(route('selection.suggestion', request()->route()->originalParameter('token'))),
@@ -31,78 +32,51 @@
                 })"
                 class="space-y-5"
             >
-                <button type="button" class="secondary-button w-full" x-bind:disabled="busy" x-on:click="suggest()">
-                    {{ $order->say('Besten Platz für mich finden', 'Beste Plätze für uns finden') }}
-                </button>
-                <section class="-mx-4 overflow-hidden border-y border-line sm:mx-0 sm:rounded-xl sm:border" aria-label="Saalplan">
-                    <x-seat-map-frame :layout="$layout" :states="$states" :hint="$order->say('Tippe auf einen Bereich, um ihn zu vergrössern.', 'Tippt auf einen Bereich, um ihn zu vergrössern.')" />
-                </section>
-
-                <x-seat-legend selection :solo="$order->isSolo()" />
-
+                {{-- Areas first, so people pick where to look before they look. --}}
                 <nav aria-label="Bereiche">
                     <ul class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                         @foreach ($layout->sections() as $section)
                             <li>
                                 <button
                                     type="button"
-                                    class="section-button"
+                                    class="section-chip"
                                     x-bind:aria-current="section === @js($section['id']) ? 'true' : null"
                                     x-on:click="showSection(@js($section['id']))"
-                                >
-                                    <span class="block text-sm font-semibold text-ink">{{ $section['label'] }}</span>
-                                </button>
+                                >{{ $section['label'] }}</button>
                             </li>
                         @endforeach
                     </ul>
                 </nav>
 
-                <section aria-label="{{ $order->say('Deine Auswahl', 'Eure Auswahl') }}" class="space-y-3">
-                    <h2 class="text-base font-semibold text-ink">
-                        <span x-text="selected.length">{{ $seats->count() }}</span> von {{ $needed }} gewählt
-                    </h2>
-
-                    <ul class="space-y-1 text-sm text-ink">
-                        <template x-for="seat in selectedSeats()" x-bind:key="seat.id">
-                            <li class="flex items-center justify-between gap-3">
-                                <span x-text="seat.label"></span>
-                                <button
-                                    type="button"
-                                    class="remove-button"
-                                    x-bind:aria-label="`${seat.label} abwählen`"
-                                    x-on:click="remove(seat.id)"
-                                >×</button>
-                            </li>
-                        </template>
-                    </ul>
-
-                    <button
-                        x-cloak
-                        x-show="selected.length > 0"
-                        type="button"
-                        class="text-sm font-semibold text-accent underline"
-                        x-on:click="clearAll()"
-                    >{{ $order->say('Platz abwählen', 'Alle Plätze abwählen') }}</button>
-
-                    <p x-cloak x-show="notice" class="notice" role="alert" x-text="notice"></p>
-                    @if ($needed > 1)
-                        <p x-cloak x-show="hasSingleGap()" class="notice" role="alert">{{ \App\Services\SeatSelection::SINGLE_GAP_MESSAGE }}</p>
-                        <p x-cloak x-show="selected.length > 1 && !together() && !hasSingleGap()" class="notice">Eure Plätze liegen nicht nebeneinander.</p>
-                    @endif
-                    <p x-cloak x-show="hasObstructed()" class="notice">{{ $order->say('Dieser Platz hat eine Sichtbehinderung.', 'Mindestens ein Platz hat eine Sichtbehinderung.') }}</p>
-
-                    <button type="button" class="primary-button w-full" x-bind:disabled="!canSave()" x-on:click="save()">
-                        {{ $order->say('Platz speichern', 'Plätze speichern') }}
-                    </button>
+                <section class="-mx-4 overflow-hidden border-y border-line sm:mx-0 sm:rounded-xl sm:border" aria-label="Saalplan">
+                    <x-seat-map-frame :layout="$layout" :states="$states" :hint="$order->say('Tippe auf einen Bereich, um ihn zu vergrössern.', 'Tippt auf einen Bereich, um ihn zu vergrössern.')" />
                 </section>
 
+                <x-seat-legend selection :solo="$order->isSolo()" />
+
                 @if ($needed > 1)
+                    <section x-cloak x-show="selected.length > 0" aria-label="Eure Auswahl">
+                        <ul class="text-sm text-ink">
+                            <template x-for="seat in selectedSeats()" x-bind:key="seat.id">
+                                <li class="flex items-center justify-between gap-3 border-b border-line">
+                                    <span x-text="seat.label"></span>
+                                    <button
+                                        type="button"
+                                        class="remove-button"
+                                        x-bind:aria-label="`${seat.label} abwählen`"
+                                        x-on:click="remove(seat.id)"
+                                    >×</button>
+                                </li>
+                            </template>
+                        </ul>
+                    </section>
+
                     <details class="help-toggle">
                         <summary>Findet ihr keine Plätze für eure Gruppe?</summary>
                         <div class="help-toggle__body">
                             <p>Wenn sich der Saal füllt, gibt es nicht mehr überall genug freie Plätze nebeneinander. Das passiert vor allem grösseren Gruppen.</p>
                             <ul>
-                                <li>«Beste Plätze für uns finden» sucht die beste Aufteilung, die noch möglich ist.</li>
+                                <li>«Beste Plätze finden» sucht die beste Aufteilung, die noch möglich ist.</li>
                                 <li>Ihr könnt euch auch aufteilen, zum Beispiel auf zwei Reihen hintereinander.</li>
                             </ul>
                             <p>
@@ -116,6 +90,35 @@
                         </div>
                     </details>
                 @endif
+
+                {{-- Fixed, not sticky: it must not depend on the height of anything around it. --}}
+                <div class="action-bar" role="region" aria-label="{{ $order->say('Deine Auswahl', 'Eure Auswahl') }}">
+                    <div class="action-bar__inner">
+                        <div class="action-bar__status">
+                            <div class="flex min-h-6 items-center justify-between gap-3">
+                                <span class="text-sm font-semibold text-ink" x-text="countText()">{{ $needed > 1 ? "{$seats->count()} von {$needed} gewählt" : 'Noch kein Platz gewählt' }}</span>
+                                <button
+                                    x-cloak
+                                    x-show="selected.length > 0"
+                                    type="button"
+                                    class="text-sm font-semibold text-accent underline"
+                                    x-on:click="clearAll()"
+                                >{{ $order->say('Abwählen', 'Alle abwählen') }}</button>
+                            </div>
+                            <template x-if="message()">
+                                <p class="bar-message" x-bind:data-kind="message().kind" role="alert" x-text="message().text"></p>
+                            </template>
+                        </div>
+                        <div class="action-bar__buttons">
+                            <button type="button" class="secondary-button" x-bind:disabled="busy" x-on:click="suggest()">
+                                {{ $order->say('Besten Platz finden', 'Beste Plätze finden') }}
+                            </button>
+                            <button type="button" class="primary-button" x-bind:disabled="!canSave()" x-on:click="save()">
+                                {{ $order->say('Platz speichern', 'Plätze speichern') }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         @else
             <div class="notice" role="status">

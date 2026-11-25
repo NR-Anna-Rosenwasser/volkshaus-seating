@@ -81,6 +81,102 @@
     color: #1d5b2c;
 }
 
+.section-chip {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.625rem;
+    background: #fff;
+    color: var(--color-ink);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.section-chip[aria-current='true'] {
+    border-color: var(--color-ink);
+    background: var(--color-ink);
+    color: #fff;
+}
+
+.section-chip:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+/* Fixed to the bottom of the screen while choosing. The page leaves room for it. */
+.action-bar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 20;
+    border-top: 1px solid var(--color-line);
+    background: #fff;
+    box-shadow: 0 -8px 24px rgb(0 0 0 / 0.08);
+}
+
+.action-bar__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 0.625rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.action-bar__status {
+    display: grid;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.action-bar__buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.action-bar__buttons > button {
+    padding-inline: 0.5rem;
+    font-size: 0.875rem;
+}
+
+@media (min-width: 40rem) {
+    .action-bar__inner {
+        flex-direction: row;
+        align-items: center;
+        gap: 1rem;
+        padding-inline: 2rem;
+    }
+
+    .action-bar__status {
+        flex: 1;
+    }
+
+    .action-bar__buttons {
+        grid-template-columns: 12.5rem 11rem;
+    }
+}
+
+.bar-message {
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.625rem;
+    background: var(--color-tint);
+    color: var(--color-ink);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.bar-message[data-kind='error'] {
+    background: #fdecea;
+    color: #8a2a1a;
+}
+
+.bar-message[data-kind='warning'] {
+    background: #fff4e0;
+    color: #6b4300;
+}
+
 .help-toggle {
     border: 1px solid var(--color-line);
     border-radius: 0.75rem;

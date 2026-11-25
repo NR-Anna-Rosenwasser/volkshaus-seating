@@ -1,4 +1,4 @@
-@props(['title'])
+@props(['title', 'withActionBar' => false])
 
 <!DOCTYPE html>
 <html lang="de-CH">
@@ -14,7 +14,7 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="min-h-svh bg-blush font-sans text-body antialiased">
-        <main class="mx-auto max-w-3xl px-2 py-2 sm:px-4 sm:py-6">
+        <main @class(['mx-auto max-w-3xl px-2 py-2 sm:px-4 sm:py-6', 'pb-40 sm:pb-28' => $withActionBar])>
             <div class="rounded-2xl bg-white px-4 py-6 shadow-sm sm:px-8 sm:py-8">
                 {{ $slot }}
             </div>
