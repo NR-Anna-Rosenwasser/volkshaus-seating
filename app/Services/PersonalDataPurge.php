@@ -68,8 +68,8 @@ class PersonalDataPurge
             DB::table('failed_jobs')->delete();
             DB::table('sessions')->whereNull('user_id')->delete();
 
-            // Order exports hold names and addresses. Only what is inside: in Docker
-            // the folder itself is a volume and can't be removed.
+            // Order exports hold names and addresses. Only what is inside, so the
+            // folder stays for the next export.
             DB::table('exports')->delete();
             $disk = Storage::disk('local');
             array_map($disk->deleteDirectory(...), $disk->directories('filament_exports'));

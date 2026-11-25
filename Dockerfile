@@ -27,7 +27,6 @@ RUN composer dump-autoload --optimize --no-dev --no-scripts --no-interaction \
     && php artisan package:discover \
     && php artisan filament:assets \
     && chmod -R a+rX /app \
-    && mkdir -p storage/app/private/filament_exports \
     && chown -R www-data:www-data storage bootstrap/cache /data/caddy /config/caddy
 
 USER www-data

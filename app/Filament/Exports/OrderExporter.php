@@ -51,7 +51,7 @@ class OrderExporter extends Exporter
     public function getFileDiskName(): string
     {
         // Never public: the file holds names and addresses. In Docker,
-        // filament_exports is a volume shared by app, horizon and scheduler.
+        // storage/app/private is a volume shared by app, horizon and scheduler.
         return 'local';
     }
 

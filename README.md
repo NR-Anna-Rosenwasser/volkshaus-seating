@@ -29,6 +29,10 @@ memory, so after changing jobs or mails run `ddev exec php artisan horizon:termi
 Docker Compose runs `app`, `horizon`, `scheduler`, `redis` and `postgres`. The app listens on
 `127.0.0.1:${APP_PORT}` for CloudPanel, which terminates TLS and proxies to it.
 
+`app`, `horizon` and `scheduler` share the `private` volume at `storage/app/private`. Today it only
+holds order exports. It isn't part of the backups, and anything personal stored there has to be
+removed by `seating:purge` too.
+
 Images are public on GHCR, at `ghcr.io/nr-anna-rosenwasser/volkshaus-seating`. The server only needs
 `docker-compose.yml` and `.env`, not the source code.
 
