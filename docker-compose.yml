@@ -6,6 +6,9 @@ x-app: &app
   env_file: .env
   environment: &app-environment
     LOG_CHANNEL: stderr
+  # Horizon writes order exports, the app serves them, the scheduler purges them.
+  volumes:
+    - exports:/app/storage/app/private/filament_exports
 
 services:
   app:
@@ -45,6 +48,7 @@ services:
       <<: *app-environment
       BACKUP_PATH: /backups
     volumes:
+      - exports:/app/storage/app/private/filament_exports
       - backups:/backups
     healthcheck:
       disable: true
@@ -83,6 +87,7 @@ services:
       retries: 10
 
 volumes:
+  exports:
   postgres-data:
   redis-data:
   backups:

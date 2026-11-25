@@ -129,7 +129,7 @@ Redis, not in the dump, so a restore neither brings them back nor removes them.
 ### Personal data
 
 `seating:purge` runs by itself `PURGE_AFTER_DAYS` days after `EVENT_DATE`. It removes names, addresses,
-Hi.Events ids, wheelchair requests, old webhook payloads, queued jobs, everything Horizon stored and guest
+Hi.Events ids, wheelchair requests, order exports, old webhook payloads, queued jobs, everything Horizon stored and guest
 sessions, and keeps the counts. **This can't be undone**, so `ADMIN_EMAILS` gets
 a warning 7 days before. A wrong `EVENT_DATE` is the one thing to watch for.
 

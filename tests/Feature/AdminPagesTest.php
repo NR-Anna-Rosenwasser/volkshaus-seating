@@ -2,6 +2,7 @@
 
 use App\Enums\BlockReason;
 use App\Enums\MailType;
+use App\Enums\OrderStatus;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\Infodesk;
 use App\Filament\Pages\Saalplan;
@@ -17,13 +18,17 @@ use App\Models\Order;
 use App\Models\Seat;
 use App\Models\User;
 use App\Services\AdminSeats;
+use App\Services\PersonalDataPurge;
 use Database\Seeders\SeatSeeder;
+use Filament\Actions\Exports\Models\Export;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use OpenSpout\Reader\XLSX\Reader as XlsxReader;
 
 beforeEach(function () {
     Mail::fake();
@@ -443,5 +448,78 @@ describe('exports', function () {
     it('rejects unknown exports', function () {
         $this->get('/admin/exporte/geheim.csv')->assertNotFound();
         $this->get('/admin/exporte/platzliste.pdf')->assertNotFound();
+    });
+});
+
+describe('order export', function () {
+    beforeEach(function () {
+        Storage::fake('local');
+    });
+
+    function exportedRows(): array
+    {
+        $export = Export::sole();
+        $path = Storage::disk('local')->path("filament_exports/{$export->id}/{$export->file_name}.xlsx");
+        $reader = new XlsxReader;
+        $reader->open($path);
+        $rows = [];
+
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rows[] = $row->toArray();
+            }
+        }
+
+        $reader->close();
+
+        return $rows;
+    }
+
+    it('exports the orders as an Excel file', function () {
+        $order = adminOrder(2, ['short_id' => 'o_abc', 'email' => 'rita@example.ch']);
+        Seat::find('P-1-1')->update(['attendee_id' => $order->attendees[0]->id]);
+        adminOrder(1, ['status' => OrderStatus::Cancelled]);
+
+        Livewire::test(ListOrders::class)
+            ->callAction('export')
+            ->assertHasNoActionErrors();
+
+        $rows = exportedRows();
+
+        expect($rows[0])->toBe(['Nummer', 'Vorname', 'Nachname', 'E-Mail', 'Status', 'Tickets', 'Plätze', 'Rollstuhl', 'Plätze gespeichert am', 'Bestellt am'])
+            ->and($rows)->toHaveCount(3)
+            ->and(collect($rows)->firstWhere(0, 'o_abc'))->toMatchArray([1 => 'Rita', 2 => 'Muster', 3 => 'rita@example.ch', 4 => 'Aktiv', 5 => 2, 6 => 'Parterre · Reihe 1 · Platz 1', 7 => 'Nein'])
+            ->and(Export::sole()->file_disk)->toBe('local');
+    });
+
+    it('exports only what the filters show', function () {
+        adminOrder(2);
+        adminOrder(1, ['status' => OrderStatus::Cancelled]);
+
+        Livewire::test(ListOrders::class)
+            ->filterTable('status', OrderStatus::Cancelled->value)
+            ->callAction('export');
+
+        expect(exportedRows())->toHaveCount(2);
+    });
+
+    it('lets only the admin who exported download it', function () {
+        adminOrder();
+        Livewire::test(ListOrders::class)->callAction('export');
+        $url = route('filament.exports.download', ['export' => Export::sole(), 'format' => 'xlsx']);
+
+        // The export job leaves the guard without a user, as a fresh request would have.
+        $this->actingAs(Export::sole()->user)->get($url)->assertOk();
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+    });
+
+    it('removes exports with the personal data', function () {
+        adminOrder();
+        Livewire::test(ListOrders::class)->callAction('export');
+
+        app(PersonalDataPurge::class)->run();
+
+        expect(Export::count())->toBe(0)
+            ->and(Storage::disk('local')->allFiles('filament_exports'))->toBe([]);
     });
 });
