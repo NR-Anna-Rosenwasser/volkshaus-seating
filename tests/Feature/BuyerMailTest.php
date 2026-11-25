@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Seat;
 use App\Services\AdminAlert;
 use App\Services\BuyerMailer;
+use App\Services\SeatPlanImage;
 use App\Services\SeatSelection;
 use Database\Seeders\SeatSeeder;
 use Illuminate\Support\Facades\Mail;
@@ -390,4 +391,41 @@ it('runs mail on a schedule', function () {
         ->expectsOutputToContain('seating:send-reminders')
         ->expectsOutputToContain('seating:send-final')
         ->assertSuccessful();
+});
+
+describe('Saalplan picture and order link', function () {
+    it('draws the hall as a PNG and marks the chosen seats', function () {
+        $png = app(SeatPlanImage::class)->png([]);
+        $marked = app(SeatPlanImage::class)->png(['P-12-7']);
+        [$width, , $type] = getimagesizefromstring($marked);
+
+        expect($width)->toBe(SeatPlanImage::WIDTH)
+            ->and($type)->toBe(IMAGETYPE_PNG)
+            ->and(strlen($marked))->toBeLessThan(150_000)
+            ->and($marked)->not->toBe($png);
+    });
+
+    it('puts the picture and the order link into mails that list seats', function (MailType $type) {
+        config(['seating.hievents.public_url' => 'https://tickets.example.ch', 'seating.event_id' => '7']);
+        $order = buyer(2, ['short_id' => 'o_abc']);
+        seated($order, 'P-12-7', 'P-12-8');
+
+        $mail = new SeatMail($order, $type);
+
+        // A preview inlines the picture. Sending attaches it and points at it by cid.
+        expect($mail->render())
+            ->toContain('src="data:image/png;base64,')
+            ->toContain('Blau sind eure Plätze, oben ist die Bühne.')
+            ->toContain('https://tickets.example.ch/checkout/7/o_abc/summary');
+        $mail->assertSeeInText('Bestellung bei Hi.Events: https://tickets.example.ch/checkout/7/o_abc/summary');
+    })->with([MailType::Confirmation, MailType::AutoAssigned, MailType::Final]);
+
+    it('leaves both out of mails without seats', function (MailType $type) {
+        config(['seating.hievents.public_url' => 'https://tickets.example.ch', 'seating.event_id' => '7']);
+        $order = buyer(2, ['short_id' => 'o_abc']);
+
+        expect((new SeatMail($order, $type))->render())
+            ->not->toContain('image/png')
+            ->not->toContain('/summary');
+    })->with([MailType::Link, MailType::Reminder]);
 });

@@ -5,10 +5,12 @@ namespace App\Mail;
 use App\Enums\MailType;
 use App\Models\Order;
 use App\Models\Seat;
+use App\Services\SeatPlanImage;
 use App\Support\SelectionWindow;
 use App\Support\VenueLayout;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Content;
@@ -45,10 +47,19 @@ class SeatMail extends Mailable implements ShouldQueue
 
     public function content(): Content
     {
+        $seats = $this->shownSeats();
+
         return new Content(
             html: 'mail.seat-mail',
             text: 'mail.seat-mail-text',
-            with: [...$this->copy(), 'seats' => $this->shownSeats()],
+            with: [
+                ...$this->copy(),
+                'seats' => $seats->map(fn (Seat $seat): string => app(VenueLayout::class)->seatLabel($seat))->all(),
+                // Rendered when sent, like the seat list, so it is never out of date.
+                'planImage' => $seats->isEmpty() ? null : app(SeatPlanImage::class)->png($seats->pluck('id')->all()),
+                'planCaption' => $this->order->say('Blau ist dein Platz, oben ist die Bühne.', 'Blau sind eure Plätze, oben ist die Bühne.'),
+                'summaryUrl' => $seats->isEmpty() ? null : $this->order->hieventsSummaryUrl(),
+            ],
         );
     }
 
@@ -149,20 +160,16 @@ class SeatMail extends Mailable implements ShouldQueue
     }
 
     /**
-     * @return list<string>
+     * @return Collection<int, Seat>
      */
-    private function shownSeats(): array
+    private function shownSeats(): Collection
     {
         if (in_array($this->type, [MailType::Link, MailType::Reminder], true)) {
-            return [];
+            return new Collection;
         }
-
-        $layout = app(VenueLayout::class);
 
         return $this->order->seats()
             ->orderBy('section')->orderBy('row')->orderBy('number')
-            ->get()
-            ->map(fn (Seat $seat): string => $layout->seatLabel($seat))
-            ->all();
+            ->get();
     }
 }
