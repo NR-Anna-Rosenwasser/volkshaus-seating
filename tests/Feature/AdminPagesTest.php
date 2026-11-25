@@ -103,7 +103,7 @@ it('shows the seat numbers on the dashboard', function () {
     adminOrder(2);
 
     Livewire::test(SeatOverview::class)->assertSee('Verkauft')->assertSee('Ohne Platz');
-    Livewire::test(SystemStatus::class)->assertSee('Letzter Webhook')->assertSee('Noch nie');
+    Livewire::test(SystemStatus::class)->assertSee('Letzter Abgleich')->assertSee('Noch nie');
 });
 
 it('warns on the dashboard when there are more tickets than seats', function () {

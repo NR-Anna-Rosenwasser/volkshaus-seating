@@ -4,7 +4,6 @@ namespace App\Filament\Widgets;
 
 use App\Console\Commands\BackupDatabase;
 use App\Console\Commands\Reconcile;
-use App\Models\WebhookEvent;
 use App\Services\AutoAssign;
 use App\Support\StatusLog;
 use Filament\Widgets\StatsOverviewWidget;
@@ -19,7 +18,7 @@ class SystemStatus extends StatsOverviewWidget
 
     protected function getColumns(): int
     {
-        return 4;
+        return 3;
     }
 
     protected function getStats(): array
@@ -27,11 +26,17 @@ class SystemStatus extends StatsOverviewWidget
         $reconcile = StatusLog::get(Reconcile::LAST_RESULT_KEY);
         $failed = $reconcile['failed'] ?? false;
 
+        $skipped = $reconcile['failed_count'] ?? 0;
+
         return [
-            Stat::make('Letzter Webhook', $this->ago(WebhookEvent::max('received_at'))),
-            Stat::make('Letzter Abgleich', $this->ago($reconcile['at'] ?? null))
-                ->description($failed ? 'Fehlgeschlagen' : ($reconcile ? 'Erfolgreich' : null))
-                ->color($failed ? 'danger' : 'gray'),
+            Stat::make('Letzter Abgleich', $this->ago($reconcile['succeeded_at'] ?? null))
+                ->description(match (true) {
+                    $failed => 'Letzter Versuch fehlgeschlagen',
+                    $skipped > 0 => "{$skipped} Bestellungen nicht übernommen",
+                    $reconcile !== null => 'Läuft alle 2 Minuten',
+                    default => null,
+                })
+                ->color($failed || $skipped > 0 ? 'danger' : 'gray'),
             Stat::make('Letzte Auto-Zuteilung', $this->ago(StatusLog::get(AutoAssign::LAST_RUN_KEY))),
             Stat::make('Letztes Backup', $this->ago(StatusLog::get(BackupDatabase::LAST_BACKUP_KEY))),
         ];

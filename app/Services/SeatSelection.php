@@ -52,7 +52,7 @@ class SeatSelection
         DB::transaction(function () use ($order, $seatIds): void {
             Order::lockByHieventsId($order->hievents_order_id);
 
-            // Webhooks may have changed the order since the request began.
+            // The sync may have changed the order since the request began.
             $order->refresh();
             $attendees = $order->attendees()
                 ->where('status', AttendeeStatus::Active)

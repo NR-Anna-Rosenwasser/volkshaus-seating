@@ -13,7 +13,6 @@ return [
     'hievents' => [
         'base_url' => env('HIEVENTS_BASE_URL'),
         'api_key' => env('HIEVENTS_API_KEY'),
-        'webhook_secret' => env('HIEVENTS_WEBHOOK_SECRET'),
     ],
 
     'event_name' => env('EVENT_NAME'),

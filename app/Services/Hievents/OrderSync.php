@@ -24,8 +24,8 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * Brings local orders in line with Hi.Events. Webhooks and reconciliation
- * both go through here, and applying the same data twice changes nothing.
+ * Brings local orders in line with Hi.Events. The pull in seating:reconcile
+ * goes through here, and applying the same data twice changes nothing.
  */
 class OrderSync
 {
