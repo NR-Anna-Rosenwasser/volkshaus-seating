@@ -311,6 +311,26 @@ it('blocks seats on the plan with a capacity reminder', function () {
     expect(Seat::find('P-1-1')->block_reason)->toBe(BlockReason::Press);
 });
 
+it('keeps the notes on the plan when the note is left out', function () {
+    Seat::whereKey('P-1-1')->update(['block_reason' => BlockReason::Vip, 'block_note' => 'Familie A']);
+    Seat::whereKey('P-1-2')->update(['block_reason' => BlockReason::Vip, 'block_note' => 'Familie B']);
+
+    Livewire::test(Saalplan::class)->call('blockSeats', ['P-1-1', 'P-1-2'], '', null);
+
+    expect(Seat::find('P-1-1')->block_note)->toBe('Familie A')
+        ->and(Seat::find('P-1-2')->block_note)->toBe('Familie B');
+
+    Livewire::test(Saalplan::class)->call('blockSeats', ['P-1-1', 'P-1-2'], 'vip', '');
+
+    expect(Seat::whereKey(['P-1-1', 'P-1-2'])->whereNotNull('block_note')->count())->toBe(0);
+});
+
+it('ignores an unknown reason on the plan', function () {
+    Livewire::test(Saalplan::class)->call('blockSeats', ['P-1-1'], 'nonsense', 'x');
+
+    expect(Seat::find('P-1-1')->block_reason)->toBeNull();
+});
+
 it('releases seats on the plan', function () {
     Seat::whereKey('P-1-1')->update(['block_reason' => BlockReason::Vip]);
 
@@ -319,13 +339,14 @@ it('releases seats on the plan', function () {
     expect(Seat::find('P-1-1')->block_reason)->toBeNull();
 });
 
-it('gives the plan seat states and block reasons', function () {
-    Seat::whereKey('P-1-1')->update(['block_reason' => BlockReason::Vip]);
+it('gives the plan seat states, block reasons and notes', function () {
+    Seat::whereKey('P-1-1')->update(['block_reason' => BlockReason::Vip, 'block_note' => 'Familie Muster']);
 
     $data = (new Saalplan)->mapData();
 
     expect($data['seats']['P-1-1'])->toBe('blocked')
         ->and($data['reasons']['P-1-1'])->toBe('vip')
+        ->and($data['notes'])->toBe(['P-1-1' => 'Familie Muster'])
         ->and($data['seats']['P-1-2'])->toBe('free');
 });
 
@@ -511,6 +532,15 @@ describe('order export', function () {
         // The export job leaves the guard without a user, as a fresh request would have.
         $this->actingAs(Export::sole()->user)->get($url)->assertOk();
         $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+    });
+
+    it('removes block notes with the personal data', function () {
+        Seat::whereKey('P-1-1')->update(['block_reason' => BlockReason::Vip, 'block_note' => 'Familie Muster']);
+
+        app(PersonalDataPurge::class)->run();
+
+        expect(Seat::find('P-1-1')->block_note)->toBeNull()
+            ->and(Seat::find('P-1-1')->block_reason)->toBe(BlockReason::Vip);
     });
 
     it('removes exports with the personal data', function () {

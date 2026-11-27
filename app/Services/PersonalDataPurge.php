@@ -62,6 +62,9 @@ class PersonalDataPurge
                     'last_name' => null,
                 ]);
 
+            // Block notes are often a guest's name.
+            DB::table('seats')->whereNotNull('block_note')->update(['block_note' => null]);
+
             // Webhook payloads and queued jobs hold names and addresses. Guest sessions hold IPs.
             DB::table('webhook_events')->delete();
             DB::table('jobs')->delete();

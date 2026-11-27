@@ -3,7 +3,7 @@
     <div
         wire:ignore
         class="admin-map"
-        x-data="adminMap({ plan: @js($plan), firstReason: @js(array_key_first($reasons)), assigning: @js($assigning) })"
+        x-data="adminMap({ plan: @js($plan), reasons: @js($reasons), assigning: @js($assigning) })"
     >
         <div class="admin-map__main">
             <div class="admin-map__bar">
@@ -74,9 +74,15 @@
             <div class="admin-card" x-cloak x-show="selected.length > 0 && !moving">
                 <p class="admin-card__big"><span x-text="selected.length"></span> Plätze ausgewählt</p>
 
+                <ul class="admin-card__list">
+                    <template x-for="row in selectedRows()" x-bind:key="row.id"><li x-text="row.text"></li></template>
+                    <li x-show="moreSelected() > 0" x-text="`… und ${moreSelected()} weitere`"></li>
+                </ul>
+
                 <label class="admin-field">
                     <span>Grund</span>
-                    <select x-model="reason">
+                    <select x-model="reason" x-on:change="reasonTouched = true">
+                        <option value="" x-show="mixedReason" x-bind:disabled="!mixedReason">Verschieden (beibehalten)</option>
                         @foreach ($reasons as $value => $label)
                             <option value="{{ $value }}">{{ $label }}</option>
                         @endforeach
@@ -85,11 +91,17 @@
 
                 <label class="admin-field">
                     <span>Notiz (optional)</span>
-                    <input type="text" maxlength="255" x-model="note">
+                    <input
+                        type="text"
+                        maxlength="255"
+                        x-model="note"
+                        x-on:input="noteTouched = true"
+                        x-bind:placeholder="mixedNote && !noteTouched ? 'Verschieden (beibehalten)' : ''"
+                    >
                 </label>
 
                 <div class="admin-card__actions">
-                    <x-filament::button x-bind:disabled="busy" x-on:click="block()">Sperren</x-filament::button>
+                    <x-filament::button x-bind:disabled="busy || !canBlock()" x-on:click="block()"><span x-text="allBlocked() ? 'Speichern' : 'Sperren'">Sperren</span></x-filament::button>
                     <x-filament::button color="gray" x-bind:disabled="busy" x-on:click="unblock()">Freigeben</x-filament::button>
                     <x-filament::button color="gray" outlined x-on:click="clearSelection()">Abwählen</x-filament::button>
                 </div>
@@ -104,6 +116,7 @@
                 @foreach ($reasons as $value => $label)
                     <li><span class="legend-dot admin-legend__reason" data-reason="{{ $value }}"></span>{{ $label }}</li>
                 @endforeach
+                <li><span class="legend-dot admin-legend__note"></span>Mit Notiz</li>
                 <li><span class="legend-dot legend-dot--pillar"></span>Säule</li>
             </ul>
         </aside>
