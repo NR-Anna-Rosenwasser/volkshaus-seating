@@ -32,17 +32,28 @@ class AdminSeats
      * @param  list<string>  $seatIds
      * @return array{changed: int, skipped: list<string>}
      */
-    public function block(array $seatIds, BlockReason $reason, ?string $note): array
+    public function block(array $seatIds, ?BlockReason $reason, ?string $note, bool $keepNote = false): array
     {
-        return DB::transaction(function () use ($seatIds, $reason, $note): array {
-            [$assigned, $seats] = $this->lockSeats($seatIds)->partition(fn (Seat $seat): bool => $seat->attendee_id !== null);
+        return DB::transaction(function () use ($seatIds, $reason, $note, $keepNote): array {
+            // Without a reason, only seats that already have one can keep theirs.
+            [$skipped, $seats] = $this->lockSeats($seatIds)->partition(
+                fn (Seat $seat): bool => $seat->attendee_id !== null || ($reason === null && $seat->block_reason === null),
+            );
 
             foreach ($seats as $seat) {
-                $this->audit('seat_blocked', $seat, $seat->attendee_id, ['block_reason' => $seat->block_reason?->value], ['block_reason' => $reason->value]);
-                $seat->update(['block_reason' => $reason, 'block_note' => $note ?: null]);
+                $newReason = $reason ?? $seat->block_reason;
+                $newNote = $keepNote ? $seat->block_note : ($note ?: null);
+
+                // Only whether the note changed: its text can be a name, and the
+                // audit log outlives the purge.
+                $this->audit('seat_blocked', $seat, null,
+                    ['block_reason' => $seat->block_reason?->value],
+                    ['block_reason' => $newReason->value, 'note_changed' => $newNote !== $seat->block_note],
+                );
+                $seat->update(['block_reason' => $newReason, 'block_note' => $newNote]);
             }
 
-            return ['changed' => $seats->count(), 'skipped' => $assigned->pluck('id')->all()];
+            return ['changed' => $seats->count(), 'skipped' => $skipped->pluck('id')->all()];
         });
     }
 

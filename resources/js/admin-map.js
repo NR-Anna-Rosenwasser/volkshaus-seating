@@ -2,14 +2,17 @@ import seatMap from './seat-map';
 
 const REFRESH_MS = 15_000;
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const LISTED_SEATS = 8;
 
 /**
  * The seat map for the admin: tap or drag seats to block them, tap an assigned
  * seat to see who sits there and move them.
  */
-export default ({ plan, firstReason, assigning }) => {
+export default ({ plan, reasons, assigning }) => {
     const map = seatMap({ url: null, refreshMs: REFRESH_MS, sections: {}, total: {} });
+    const firstReason = Object.keys(reasons)[0];
     let drawn = null;
+    let active = null;
 
     return {
         ...map,
@@ -17,6 +20,12 @@ export default ({ plan, firstReason, assigning }) => {
         full: false,
         reason: firstReason,
         note: '',
+        reasons,
+        // Set once the admin edits a field, so a changing selection leaves it alone.
+        reasonTouched: false,
+        noteTouched: false,
+        mixedReason: false,
+        mixedNote: false,
         sellable: plan.sellable,
         sold: plan.sold,
         detail: null,
@@ -68,6 +77,8 @@ export default ({ plan, firstReason, assigning }) => {
                 if (el) {
                     el.dataset.state = state;
                     data.reasons[id] ? (el.dataset.reason = data.reasons[id]) : delete el.dataset.reason;
+                    data.notes[id] ? (el.dataset.note = data.notes[id]) : delete el.dataset.note;
+                    this.markNote(el);
                 }
             }
 
@@ -86,6 +97,100 @@ export default ({ plan, firstReason, assigning }) => {
         paint() {
             this.$refs.viewport.querySelectorAll('.seat.is-selected').forEach((el) => el.classList.remove('is-selected'));
             this.selected.forEach((id) => this.seatElement(id)?.classList.add('is-selected'));
+            this.syncForm();
+        },
+
+        /** A small dot on blocked seats that have a note, so missing names stand out. */
+        markNote(el) {
+            const marker = el.querySelector('.seat__note');
+
+            if (!el.dataset.note) {
+                marker?.remove();
+
+                return;
+            }
+
+            if (marker) {
+                return;
+            }
+
+            const circle = el.querySelector('circle');
+            const r = circle.r.baseVal.value;
+            const dot = document.createElementNS(SVG_NS, 'circle');
+
+            dot.classList.add('seat__note');
+            dot.setAttribute('cx', circle.cx.baseVal.value + r * 0.75);
+            dot.setAttribute('cy', circle.cy.baseVal.value - r * 0.75);
+            dot.setAttribute('r', r * 0.4);
+            el.append(dot);
+        },
+
+        selectedSeats() {
+            return this.selected.map((id) => this.seatElement(id)).filter(Boolean);
+        },
+
+        /** Fills reason and note with what the selected seats have now. */
+        syncForm() {
+            const seats = this.selectedSeats();
+
+            if (seats.length === 0) {
+                this.reasonTouched = false;
+                this.noteTouched = false;
+            }
+
+            const blockedReasons = new Set(seats.filter((el) => el.dataset.reason).map((el) => el.dataset.reason));
+            const notes = new Set(seats.map((el) => el.dataset.note ?? ''));
+
+            this.mixedReason = blockedReasons.size > 1;
+            this.mixedNote = notes.size > 1;
+
+            if (!this.reasonTouched) {
+                this.reason = blockedReasons.size === 1 ? [...blockedReasons][0] : this.mixedReason ? '' : firstReason;
+            }
+
+            if (!this.noteTouched) {
+                this.note = notes.size === 1 ? [...notes][0] : '';
+            }
+        },
+
+        allBlocked() {
+            const seats = this.selectedSeats();
+
+            return seats.length > 0 && seats.every((el) => el.dataset.reason);
+        },
+
+        /** Keeping each seat's reason only works for seats that have one. */
+        canBlock() {
+            return this.reason !== '' || this.allBlocked();
+        },
+
+        selectedRows() {
+            return this.selectedSeats().slice(0, LISTED_SEATS).map((el) => ({
+                id: el.dataset.seat,
+                text: [this.seatLabel(el), el.dataset.reason ? reasons[el.dataset.reason] : 'frei', el.dataset.note].filter(Boolean).join(' · '),
+            }));
+        },
+
+        moreSelected() {
+            return Math.max(0, this.selected.length - LISTED_SEATS);
+        },
+
+        showSeat(el) {
+            active = el;
+            map.showSeat.call(this, el);
+        },
+
+        clearSeat() {
+            active = null;
+            map.clearSeat.call(this);
+        },
+
+        describeSeat() {
+            map.describeSeat.call(this);
+
+            if (active?.dataset.reason) {
+                this.seat = [this.seat, reasons[active.dataset.reason], active.dataset.note].filter(Boolean).join(' · ');
+            }
         },
 
         /** Free, a wheelchair seat, or already this order's own. */
@@ -178,7 +283,10 @@ export default ({ plan, firstReason, assigning }) => {
 
         async block() {
             this.busy = true;
-            await this.$wire.blockSeats(this.selected, this.reason, this.note);
+            // Null keeps each seat's own note when they differ and nobody typed one.
+            const note = this.mixedNote && !this.noteTouched ? null : this.note;
+
+            await this.$wire.blockSeats(this.selected, this.reason, note);
             this.afterChange();
         },
 
@@ -190,7 +298,6 @@ export default ({ plan, firstReason, assigning }) => {
 
         async afterChange() {
             this.clearSelection();
-            this.note = '';
             await this.refresh();
             this.busy = false;
         },

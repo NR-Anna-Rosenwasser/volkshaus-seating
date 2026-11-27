@@ -54,18 +54,21 @@ class Saalplan extends Page
     }
 
     /**
-     * @return array{seats: array<string, string>, reasons: array<string, string>, sellable: int, sold: int}
+     * @return array{seats: array<string, string>, reasons: array<string, string>, notes: array<string, string>, sellable: int, sold: int}
      */
     #[Renderless]
     public function mapData(): array
     {
-        $seats = Seat::query()->get(['id', 'block_reason', 'attendee_id']);
+        $seats = Seat::query()->get(['id', 'block_reason', 'block_note', 'attendee_id']);
         $stats = app(SeatStats::class)->snapshot();
 
         return [
             'seats' => $seats->mapWithKeys(fn (Seat $seat): array => [$seat->id => $seat->state()->value])->all(),
             'reasons' => $seats->whereNotNull('block_reason')
                 ->mapWithKeys(fn (Seat $seat): array => [$seat->id => $seat->block_reason->value])
+                ->all(),
+            'notes' => $seats->whereNotNull('block_reason')->whereNotNull('block_note')
+                ->mapWithKeys(fn (Seat $seat): array => [$seat->id => $seat->block_note])
                 ->all(),
             'sellable' => $stats['sellable'],
             'sold' => $stats['sold'],
@@ -102,19 +105,26 @@ class Saalplan extends Page
 
     /**
      * @param  list<string>  $seatIds
+     * @param  string|null  $reason  Empty keeps each seat's reason.
+     * @param  string|null  $note  Null keeps each seat's note, empty clears it.
      */
-    public function blockSeats(array $seatIds, string $reason, ?string $note = null): void
+    public function blockSeats(array $seatIds, ?string $reason, ?string $note = null): void
     {
-        $blockReason = BlockReason::tryFrom($reason);
+        $blockReason = BlockReason::tryFrom((string) $reason);
 
-        if ($blockReason === null) {
+        if ($blockReason === null && $reason !== '' && $reason !== null) {
             return;
         }
 
-        $result = app(AdminSeats::class)->block(array_map('strval', $seatIds), $blockReason, mb_substr((string) $note, 0, 255));
+        $result = app(AdminSeats::class)->block(
+            array_map('strval', $seatIds),
+            $blockReason,
+            $note === null ? null : mb_substr($note, 0, 255),
+            keepNote: $note === null,
+        );
 
-        $this->capacityReminder("{$result['changed']} Plätze gesperrt", $result['skipped'] !== []
-            ? count($result['skipped']).' belegte Plätze wurden ausgelassen.'
+        $this->capacityReminder($result['changed'] === 1 ? '1 Platz gesperrt' : "{$result['changed']} Plätze gesperrt", $result['skipped'] !== []
+            ? count($result['skipped']).' Plätze wurden ausgelassen, weil sie belegt sind oder keinen Grund haben.'
             : null);
     }
 
@@ -125,7 +135,7 @@ class Saalplan extends Page
     {
         $changed = app(AdminSeats::class)->unblock(array_map('strval', $seatIds));
 
-        $this->capacityReminder("{$changed} Plätze freigegeben");
+        $this->capacityReminder($changed === 1 ? '1 Platz freigegeben' : "{$changed} Plätze freigegeben");
     }
 
     public function moveSeat(string $from, string $to): bool

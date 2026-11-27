@@ -329,3 +329,19 @@
     color: #b42318;
     font-weight: 600;
 }
+
+/* Blocked seats with a note, e.g. a guest's name. */
+.admin-map .seat[data-note] circle.seat__note {
+    fill: #fff;
+    stroke: #181818;
+    stroke-width: 0.6;
+    stroke-dasharray: none;
+    pointer-events: none;
+}
+
+.admin-legend__note {
+    width: 0.5rem;
+    height: 0.5rem;
+    background: #fff;
+    border: 1.5px solid #181818;
+}

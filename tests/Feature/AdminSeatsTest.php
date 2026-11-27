@@ -62,6 +62,40 @@ it('leaves assigned seats out of a block', function () {
         ->and(Seat::find('P-1-1')->block_reason)->toBeNull();
 });
 
+it('keeps each seat its own note when none is given', function () {
+    $this->seats->block(['P-1-1'], BlockReason::Vip, 'Familie A');
+    $this->seats->block(['P-1-2'], BlockReason::Vip, 'Familie B');
+
+    $this->seats->block(['P-1-1', 'P-1-2'], BlockReason::Staff, null, keepNote: true);
+
+    expect(Seat::find('P-1-1')->block_note)->toBe('Familie A')
+        ->and(Seat::find('P-1-2')->block_note)->toBe('Familie B')
+        ->and(Seat::find('P-1-2')->block_reason)->toBe(BlockReason::Staff);
+});
+
+it('overwrites the notes of blocked seats', function () {
+    $this->seats->block(['P-1-1', 'P-1-2'], BlockReason::Vip, 'Gast');
+
+    $this->seats->block(['P-1-1', 'P-1-2'], BlockReason::Vip, 'Familie Muster');
+
+    expect(Seat::whereKey(['P-1-1', 'P-1-2'])->pluck('block_note')->unique()->all())->toBe(['Familie Muster'])
+        // Names stay out of the audit log, it outlives the purge.
+        ->and(AuditLog::where('action', 'seat_blocked')->latest('id')->first()->after)->toBe(['block_reason' => 'vip', 'note_changed' => true]);
+});
+
+it('keeps each reason when none is given and leaves free seats out', function () {
+    $this->seats->block(['P-1-1'], BlockReason::Vip, null);
+    $this->seats->block(['P-1-2'], BlockReason::Press, null);
+
+    $result = $this->seats->block(['P-1-1', 'P-1-2', 'P-1-3'], null, 'Gast');
+
+    expect($result)->toBe(['changed' => 2, 'skipped' => ['P-1-3']])
+        ->and(Seat::find('P-1-1')->block_reason)->toBe(BlockReason::Vip)
+        ->and(Seat::find('P-1-2')->block_reason)->toBe(BlockReason::Press)
+        ->and(Seat::find('P-1-2')->block_note)->toBe('Gast')
+        ->and(Seat::find('P-1-3')->block_reason)->toBeNull();
+});
+
 it('releases blocked seats and clears the note', function () {
     $this->seats->block(['P-1-1'], BlockReason::Vip, 'Gast');
 
